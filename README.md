@@ -95,7 +95,7 @@
 ### 1. 编译
 
 ```bash
-git clone https://github.com/<你的用户名>/homework-board.git
+git clone https://github.com/dujunily/homework-board.git
 cd homework-board
 
 # 告诉 Gradle SDK 在哪（这个文件不进仓库，每人本地一份）
