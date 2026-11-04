@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      窗口背景（冷启动时 Compose 还没画出第一帧，屏幕上就是这块颜色）。
+
+      它必须和 Theme.kt 里的 TvColors.Bg 一致，否则每次启动都会闪一下异色：
+      原来这里是 #101216（近黑），而界面是 #F5F4EF 的米白，
+      Compose 首帧一上来就「黑屏跳白」，电视上大面积闪一下很刺眼。
+      深浅两套分别放在 values/ 和 values-night/，跟随系统主题。
+    -->
+    <color name="bg">#FFF5F4EF</color>
+</resources>

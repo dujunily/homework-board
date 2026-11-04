@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 深色窗口背景，与 Theme.kt 的 TvDark.Bg 保持一致 -->
+    <color name="bg">#FF12151A</color>
+</resources>

@@ -1,0 +1,41 @@
+# ========== 凭据与个人环境（绝对不要提交） ==========
+
+# 坚果云账号密码文件。App 运行时读它，仓库里绝不能有真凭据。
+# 模板见 config.sample.json
+config.json
+
+# 签名密钥
+*.jks
+*.keystore
+*.p12
+keystore.properties
+signing.properties
+
+# 本机 SDK 路径（含用户名）
+local.properties
+
+# ========== 构建产物 ==========
+
+build/
+.gradle/
+.kotlin/
+captures/
+*.hprof
+
+# 打包出来的 APK 不进仓库，走 GitHub Releases
+dist/
+*.apk
+*.aab
+*.ap_
+
+# ========== IDE / 系统 ==========
+
+.idea/
+*.iml
+.DS_Store
+Thumbs.db
+
+# ========== 其他 ==========
+
+.workbuddy/
+*.log

@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+        系统栏全透明后，手势条那一线透出来的是 windowBackground，
+        所以这里必须给底色（写死深色的话，浅色模式下屏幕最底下永远挂一条黑边）。
+        windowLight* 只负责冷启动第一帧；Compose 起来后由 Theme 里的
+        SystemBarsAppearance 按 App 内主题再校正一次。
+    -->
+    <style name="Theme.HomeworkPhone" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">#F7F4EE</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:windowLightNavigationBar">true</item>
+    </style>
+</resources>

@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <!-- 拍照临时文件放这里，系统相机写回后由我们读取压缩 -->
+    <cache-path name="shots" path="shots/" />
+    <files-path name="images" path="images/" />
+    <!-- 给电视端的 config.json，分享到电脑时要能把它作为文件发出去 -->
+    <external-files-path name="tv" path="." />
+</paths>
