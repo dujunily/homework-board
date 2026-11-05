@@ -348,6 +348,19 @@ async function writeJSON(path, obj) {
   await writeFile(path, JSON.stringify(obj, null, 2));
 }
 
+/**
+ * 让电视立刻去拉。
+ *
+ * 浏览器发不了 UDP 广播，所以只能使唤本地的 serve.py：它用和手机端一模一样
+ * 的暗号（47823 / HOMEWORK-BOARD/SYNC/1）往局域网喊一嗓子，电视听见就同步。
+ * 页面不是 serve.py 起的（比如托管在别处）就当没有这回事，静默忽略。
+ */
+function pingTv() {
+  try {
+    fetch('/ping', { method: 'POST' }).catch(() => {});
+  } catch (e) { /* 忽略 */ }
+}
+
 /* ---------- 数据读写 ---------- */
 async function loadDay(date) {
   const raw = await readText(`day/${date}.json`);
@@ -653,6 +666,7 @@ async function save() {
     state.items = check.items;
     resetForm();
     renderList();
+    pingTv();
     toast(idx >= 0 ? '已更新，坚果云会自动同步' : '已保存，坚果云会自动同步');
   } catch (e) {
     console.error(e);
@@ -675,6 +689,7 @@ async function removeItem(it) {
     state.items = day.items;
     if (state.editingId === it.id) resetForm();
     renderList();
+    pingTv();
     toast('已删除');
   } catch (e) {
     toast('删除失败：' + e.message, true);
