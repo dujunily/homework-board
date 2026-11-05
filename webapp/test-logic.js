@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 /**
  * 网页端逻辑冒烟测试（不依赖浏览器）。
- * 把 index.html 里的 <script> 拿出来，喂一套假的 DOM + 假目录句柄（落在真实磁盘），
- * 然后真的跑 save()，检查写出来的 day/manifest 是否符合数据契约、会不会覆盖别人的条目。
+ * 把 index.html 里的 <script> 拿出来，喂一套假的 DOM + 假的 /dav-proxy 转发层
+ * （请求最终落到真实磁盘），然后真的跑 save()，
+ * 检查写出来的 day/manifest 是否符合数据契约、会不会覆盖别人的条目。
  */
 const fs = require('fs');
 const os = require('os');
@@ -14,39 +15,55 @@ const ROOT = path.join(TMP, '作业板');
 fs.rmSync(TMP, { recursive: true, force: true });
 fs.mkdirSync(ROOT, { recursive: true });
 
-/* ---------------- 假目录句柄，落在真实磁盘 ---------------- */
-class FakeFileHandle {
-  constructor(p) { this.p = p; }
-  async getFile() {
-    const buf = fs.readFileSync(this.p);
-    return { text: async () => buf.toString('utf8'), arrayBuffer: async () => buf.buffer };
-  }
-  async createWritable() {
-    const p = this.p;
-    const chunks = [];
-    return {
-      write: async (d) => { chunks.push(Buffer.isBuffer(d) ? d : Buffer.from(String(d))); },
-      close: async () => { fs.mkdirSync(path.dirname(p), { recursive: true }); fs.writeFileSync(p, Buffer.concat(chunks)); },
-    };
-  }
+const DAV_BASE = 'https://dav.jianguoyun.com/dav/作业板';
+
+/* ---------------- 假 /dav-proxy：把 WebDAV 请求映射到真实磁盘 ---------------- */
+function resp(status, buf = Buffer.alloc(0)) {
+  return {
+    status,
+    ok: status >= 200 && status < 300,
+    text: async () => buf.toString('utf8'),
+    blob: async () => ({ type: 'application/octet-stream', size: buf.length, _buf: buf }),
+    headers: { get: () => null },
+  };
 }
-class FakeDirHandle {
-  constructor(p) { this.p = p; this.name = path.basename(p); }
-  async getDirectoryHandle(name, opts = {}) {
-    const dir = path.join(this.p, name);
-    if (!fs.existsSync(dir)) {
-      if (!opts.create) throw new Error('NotFound');
-      fs.mkdirSync(dir, { recursive: true });
-    }
-    return new FakeDirHandle(dir);
+
+async function fakeFetch(input, opts = {}) {
+  const u = new URL(input, 'http://127.0.0.1:8123');
+  if (u.pathname === '/ping') return resp(200, Buffer.from('{"ok":true}'));
+  if (u.pathname !== '/dav-proxy') return resp(404);
+
+  const method = (opts.method || 'GET').toUpperCase();
+  const rel = u.searchParams.get('path') || '';
+  const target = path.join(ROOT, rel);
+  const auth = (opts.headers || {}).Authorization || '';
+  if (!auth.startsWith('Basic ')) return resp(401);
+
+  if (method === 'PROPFIND') return resp(fs.existsSync(target) || rel === '' ? 207 : 404);
+  if (method === 'MKCOL') {
+    if (fs.existsSync(target)) return resp(405);
+    fs.mkdirSync(target, { recursive: true });
+    return resp(201);
   }
-  async getFileHandle(name, opts = {}) {
-    const f = path.join(this.p, name);
-    if (!fs.existsSync(f) && !opts.create) throw new Error('NotFound');
-    return new FakeFileHandle(f);
+  if (method === 'GET' || method === 'HEAD') {
+    if (!fs.existsSync(target) || fs.statSync(target).isDirectory()) return resp(404);
+    return resp(200, fs.readFileSync(target));
   }
-  async queryPermission() { return 'granted'; }
-  async requestPermission() { return 'granted'; }
+  if (method === 'PUT') {
+    fs.mkdirSync(path.dirname(target), { recursive: true });
+    const body = opts.body;
+    const buf = Buffer.isBuffer(body) ? body
+      : (body && body._buf) ? body._buf
+        : Buffer.from(typeof body === 'string' ? body : '');
+    fs.writeFileSync(target, buf);
+    return resp(201);
+  }
+  if (method === 'DELETE') {
+    if (!fs.existsSync(target)) return resp(404);
+    fs.rmSync(target, { recursive: true, force: true });
+    return resp(204);
+  }
+  return resp(405);
 }
 
 /* ---------------- 假 DOM ---------------- */
@@ -86,14 +103,14 @@ const localStorage = {
   setItem(k, v) { this._d[k] = String(v); },
   removeItem(k) { delete this._d[k]; },
 };
-const window = { showDirectoryPicker: async () => new FakeDirHandle(ROOT) };
+const window = {};
 const indexedDB = { open: () => ({}) };
 
 const html = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
 const script = html.match(/<script>([\s\S]*)<\/script>/)[1];
 
 const factory = new Function(
-  'document', 'window', 'indexedDB', 'localStorage', 'createImageBitmap', 'confirm', 'alert', 'navigator',
+  'document', 'window', 'indexedDB', 'localStorage', 'createImageBitmap', 'confirm', 'alert', 'navigator', 'fetch',
   script + '\n; return { state, save, loadDay, updateManifest, resetForm, renderList, today, nowISO, switchDate, defaultValidUntil, nextSunday, addDays, setValidUntil, renderUntil };',
 );
 
@@ -103,6 +120,7 @@ const api = factory(
   () => true,
   () => {},
   { clipboard: {} },
+  fakeFetch,
 );
 
 /* ---------------- 场景 ---------------- */
@@ -117,7 +135,7 @@ assert.total = 0;
 
 (async () => {
   const date = api.today();
-  api.state.dirHandle = new FakeDirHandle(ROOT);
+  api.state.dav = { base: DAV_BASE, user: 'demo@example.com', pass: 'app-pass' };
 
   // 另一台设备（手机）先写了一条，网页端必须保留它
   fs.mkdirSync(path.join(ROOT, 'day'), { recursive: true });

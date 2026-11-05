@@ -1,12 +1,15 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""作业板 · 电脑端录入页 —— 本地静态服务
+"""作业板 · 电脑端录入页 —— 本地静态服务 + WebDAV 转发
 
 Windows / macOS / Linux 通用（只需要 Python 3.7+，不用装任何依赖）。
 
-为什么不直接双击 index.html：
-  Chrome / Edge 在 file:// 下会拒绝「选择文件夹」的写入授权，页面拿不到目录句柄就存不了。
-  走 http://127.0.0.1 是「安全上下文」，File System Access API 才能正常工作。
+为什么需要起这个服务，而不是直接双击 index.html：
+  1. 页面要用坚果云账号直连 /dav/ ，而坚果云响应里没有 Access-Control-Allow-Origin，
+     浏览器带 Authorization 的请求会卡在预检阶段，必须由本机代跑一趟（/dav-proxy）
+  2. 保存后要往局域网喊一嗓子通知电视，浏览器发不了 UDP 广播（/ping）
+
+两者都只走 127.0.0.1，不监听外网。
 
 用法：
   python3 serve.py            # 自动挑一个空端口并打开浏览器
@@ -23,9 +26,14 @@ import threading
 import time
 import webbrowser
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
+from urllib.error import HTTPError
+from urllib.parse import parse_qs, quote, urlparse
+from urllib.request import Request, urlopen
 
 ROOT = pathlib.Path(__file__).resolve().parent
 PORT_FIRST, PORT_LAST = 8123, 8160
+
+PROXY_PATH = "/dav-proxy"
 
 # 和手机端、电视端写死的同一套暗号（core/.../sync/SyncPing.kt）
 PING_PORT = 47823
@@ -61,6 +69,101 @@ class Handler(SimpleHTTPRequestHandler):
             self.wfile.write(body)
         except Exception as exc:  # 喊不出去也不能让页面以为保存失败
             self.send_error(500, str(exc))
+
+    # ---------- WebDAV 转发 ----------
+    #
+    # 页面和 dav.jianguoyun.com 不同源，而坚果云响应里没有任何
+    # Access-Control-Allow-Origin，浏览器带 Authorization 的请求会卡在预检，
+    # 所以只能由本机服务代跑一趟。这里只做透明转发：
+    # Authorization 头跟着浏览器的请求走，服务端不读也不存。
+    # 只允许转发到 http(s) 的绝对地址，且服务只监听 127.0.0.1。
+
+    def _is_proxy(self):
+        return self.path.split("?")[0] == PROXY_PATH
+
+    def _proxy(self):
+        query = parse_qs(urlparse(self.path).query)
+        base = (query.get("base") or [""])[0].rstrip("/")
+        sub = (query.get("path") or [""])[0]
+        if not base.startswith(("https://", "http://")):
+            self.send_error(400, "base must be an absolute http(s) url")
+            return
+
+        target = base
+        for seg in sub.split("/"):
+            if seg:
+                target += "/" + seg
+        target = quote(target, safe=":/")
+
+        auth = self.headers.get("Authorization")
+        if not auth:
+            self.send_error(401, "missing Authorization")
+            return
+
+        length = int(self.headers.get("Content-Length") or 0)
+        body = self.rfile.read(length) if length else None
+
+        req = Request(target, data=body, method=self.command)
+        req.add_header("Authorization", auth)
+        for name in ("Depth", "Content-Type", "Accept", "If-None-Match",
+                     "If-Match", "Destination", "Overwrite", "Content-Range"):
+            value = self.headers.get(name)
+            if value:
+                req.add_header(name, value)
+
+        try:
+            resp = urlopen(req, timeout=60)
+        except HTTPError as exc:   # 401/404/405 这些要原样交回页面判断
+            resp = exc
+        except Exception as exc:
+            self.send_error(502, "upstream failed: %s" % exc)
+            return
+
+        payload = resp.read()
+        self.send_response(resp.status)
+        for name in ("Content-Type", "ETag", "Last-Modified"):
+            value = resp.headers.get(name)
+            if value:
+                self.send_header(name, value)
+        self.send_header("Content-Length", str(len(payload)))
+        self.end_headers()
+        if self.command != "HEAD":
+            self.wfile.write(payload)
+
+    def do_GET(self):
+        if self._is_proxy():
+            return self._proxy()
+        super().do_GET()
+
+    def do_HEAD(self):
+        if self._is_proxy():
+            return self._proxy()
+        super().do_HEAD()
+
+    def do_PUT(self):
+        if self._is_proxy():
+            return self._proxy()
+        self.send_error(405, "method not allowed")
+
+    def do_DELETE(self):
+        if self._is_proxy():
+            return self._proxy()
+        self.send_error(405, "method not allowed")
+
+    def do_PROPFIND(self):
+        if self._is_proxy():
+            return self._proxy()
+        self.send_error(405, "method not allowed")
+
+    def do_MKCOL(self):
+        if self._is_proxy():
+            return self._proxy()
+        self.send_error(405, "method not allowed")
+
+    def do_MOVE(self):
+        if self._is_proxy():
+            return self._proxy()
+        self.send_error(405, "method not allowed")
 
     def end_headers(self):
         self.send_header("Cache-Control", "no-store, must-revalidate")
@@ -172,7 +275,7 @@ def main(argv):
     line = "─" * 52
     print(line)
     print(" 作业板录入页已启动： %s" % url)
-    print(" 首次使用点「选择文件夹」，选中坚果云里的 作业板 目录")
+    print(" 首次使用填坚果云账号 + 应用专用密码（不是登录密码）")
     print(" 保存后会自动通知局域网里的电视去拉（端口 %d）" % PING_PORT)
     print("")
     print(" 关闭这个窗口（或按 Ctrl+C）即停止服务，录入过程中别关")

@@ -63,9 +63,11 @@
   .chip{border:1px solid var(--line);background:#fcfbf9;border-radius:999px;padding:6px 15px;font-size:14px;cursor:pointer;font-family:inherit;color:var(--ink);transition:.12s}
   .chip:hover{border-color:#cfc9bc}
   .chip.on{background:var(--accent);border-color:var(--accent);color:#fff}
-  input[type=text],textarea{width:100%;border:1px solid var(--line);border-radius:10px;padding:11px 13px;font-family:inherit;font-size:15px;background:#fcfbf9;color:var(--ink);outline:none;transition:.12s}
-  input[type=text]:focus,textarea:focus{border-color:var(--accent);background:#fff;box-shadow:0 0 0 3px rgba(47,111,79,.08)}
+  input[type=text],input[type=password],textarea{width:100%;border:1px solid var(--line);border-radius:10px;padding:11px 13px;font-family:inherit;font-size:15px;background:#fcfbf9;color:var(--ink);outline:none;transition:.12s}
+  input[type=text]:focus,input[type=password]:focus,textarea:focus{border-color:var(--accent);background:#fff;box-shadow:0 0 0 3px rgba(47,111,79,.08)}
   textarea{resize:vertical;min-height:78px;line-height:1.6}
+  label.chk{display:flex;align-items:center;gap:8px;font-size:13.5px;color:var(--muted);margin-top:12px;cursor:pointer}
+  label.chk input{width:16px;height:16px;accent-color:var(--accent)}
 
   /* ---------- 图片区 ---------- */
   .drop{border:1.5px dashed #d8d2c5;border-radius:12px;padding:16px;text-align:center;color:var(--muted);font-size:13.5px;cursor:pointer;background:#fcfbf9;transition:.12s}
@@ -90,10 +92,12 @@
   #toast.show{opacity:1;transform:translate(-50%,0)}
   #toast.err{background:var(--danger)}
 
-  .gate{max-width:520px;margin:52px auto;background:#fff;border:1px solid var(--line);border-radius:var(--r);padding:32px;text-align:center}
-  .gate h1{font-size:20px;margin:0 0 10px}
-  .gate p{color:var(--muted);font-size:14px;margin:0 0 20px;line-height:1.7}
+  .gate{max-width:520px;margin:52px auto;background:#fff;border:1px solid var(--line);border-radius:var(--r);padding:32px;text-align:left}
+  .gate h1{font-size:20px;margin:0 0 8px;text-align:center}
+  .gate>p{color:var(--muted);font-size:14px;margin:0 0 22px;line-height:1.7;text-align:center}
   .gate .tip{font-size:12.5px;color:var(--muted);margin-top:18px;text-align:left;background:#faf9f6;border-radius:10px;padding:12px 14px;line-height:1.7}
+  .gate .err{color:var(--danger);font-size:13px;margin-top:10px;min-height:18px}
+  .gate .actions{margin-top:18px}
   code{background:#efede7;padding:1.5px 6px;border-radius:5px;font-size:12.5px;font-family:ui-monospace,Menlo,monospace}
 </style>
 </head>
@@ -108,16 +112,35 @@
     <button class="daybtn today" id="todayBtn" hidden>回到今天</button>
   </div>
   <div class="spacer"></div>
-  <div class="conn" id="conn"><span class="dot"></span><span class="path" id="connText">未连接同步目录</span></div>
+  <button class="daybtn" id="settingsBtn" title="换账号 / 换目录">设置</button>
+  <div class="conn" id="conn"><span class="dot"></span><span class="path" id="connText">未连接</span></div>
 </topbar>
 
 <div id="gate" class="gate" hidden>
-  <h1>选择坚果云同步目录</h1>
-  <p>选中电脑上坚果云同步文件夹里的 <code>作业板</code> 目录。<br>只需要选一次，之后会自动记住。</p>
-  <button class="btn primary" id="pickBtn">选择文件夹</button>
+  <h1>连接坚果云</h1>
+  <p>用坚果云账号直接读写自己的 <code>/dav/作业板/</code> 目录，<br>和手机端、电视端是同一份数据。</p>
+
+  <label class="f">目录地址</label>
+  <input type="text" id="davBase" spellcheck="false" autocomplete="off">
+
+  <label class="f">账号（坚果云登录邮箱）</label>
+  <input type="text" id="davUser" spellcheck="false" autocomplete="username">
+
+  <label class="f">应用专用密码</label>
+  <input type="password" id="davPass" autocomplete="current-password">
+
+  <label class="chk"><input type="checkbox" id="davRemember" checked> 记住密码（存在本机浏览器里，换台电脑要重填）</label>
+
+  <div class="err" id="gateErr"></div>
+
+  <div class="actions">
+    <button class="btn primary" id="connBtn">连接</button>
+  </div>
+
   <div class="tip">
-    本页面直接写本地文件，<b>不联网、不传图、不碰账号密码</b>，坚果云客户端会自己把文件同步上去。<br>
-    需要 Chrome 或 Edge 打开（Safari 不支持文件夹写入）。
+    <b>不是登录密码</b>：坚果云网页 → 账户信息 → 安全选项 → 添加应用 → 生成一个专用密码。<br>
+    请求经由本机的 <code>serve.py</code> 转发（坚果云不允许浏览器跨域直连），
+    密码只存在你这台机器的浏览器里，服务端不落盘。
   </div>
 </div>
 
@@ -167,8 +190,11 @@
    作业板 · 电脑端录入页
    ------------------------------------------------------------
    设计原则：
-   1. 不联网。所有写入都是本地文件（File System Access API），
-      坚果云客户端负责上传，因此无需账号密码、无 CORS、断网可用。
+   1. 直连云端。页面用坚果云账号读写 /dav/作业板/，和手机端、电视端
+      是同一份数据，不依赖坚果云客户端，也不需要本地同步文件夹。
+      浏览器不能跨域直连（坚果云不发 CORS 头），所以请求统一打到
+      本机 serve.py 的 /dav-proxy?base=…&path=…，由它原样转发，
+      凭据只跟着请求走、服务端不落盘。
    2. 写盘顺序与手机 App 完全一致：
       图片 → day/YYYY-MM-DD.json（先读后合并）→ manifest.json
    3. 不破坏数据契约：只增字段、未知字段原样保留。
@@ -181,8 +207,9 @@ const WEEKDAYS = ['周日', '周一', '周二', '周三', '周四', '周五', '�
 const MAX_ITEMS_HINT = 6; // 电视端一屏放 6 条
 
 /* ---------- 状态 ---------- */
+const DEFAULT_BASE = 'https://dav.jianguoyun.com/dav/作业板';
 const state = {
-  dirHandle: null,
+  dav: null,        // {base,user,pass} —— 连上之后才有
   date: today(),
   items: [],
   subject: localStorage.getItem('hb.subject') || '语文',
@@ -253,99 +280,119 @@ function toast(msg, isErr = false) {
   toastTimer = setTimeout(() => { el.className = ''; }, isErr ? 4200 : 2200);
 }
 
-/* ---------- IndexedDB：记住目录句柄 ---------- */
-function idb() {
-  return new Promise((res, rej) => {
-    const r = indexedDB.open('homework-board', 1);
-    r.onupgradeneeded = () => { if (!r.result.objectStoreNames.contains('kv')) r.result.createObjectStore('kv'); };
-    r.onsuccess = () => res(r.result);
-    r.onerror = () => rej(r.error);
-  });
-}
-async function idbSet(k, v) {
-  const db = await idb();
-  return new Promise((res, rej) => {
-    const tx = db.transaction('kv', 'readwrite');
-    tx.objectStore('kv').put(v, k);
-    tx.oncomplete = res; tx.onerror = () => rej(tx.error);
-  });
-}
-async function idbGet(k) {
-  const db = await idb();
-  return new Promise((res, rej) => {
-    const q = db.transaction('kv', 'readonly').objectStore('kv').get(k);
-    q.onsuccess = () => res(q.result); q.onerror = () => rej(q.error);
-  });
+/* ---------- 凭据：存在本机浏览器里 ---------- */
+const CRED_KEY = 'hb.dav';
+
+function loadCreds() {
+  try {
+    const o = JSON.parse(localStorage.getItem(CRED_KEY) || 'null');
+    if (!o || !o.base || !o.user) return null;
+    return o;
+  } catch (_) { return null; }
 }
 
-/* ---------- 目录与文件 ---------- */
-async function pickDir() {
-  if (!window.showDirectoryPicker) {
-    toast('当前浏览器不支持文件夹写入，请用 Chrome 或 Edge 打开', true);
-    return false;
-  }
+function saveCreds(c) {
   try {
-    const h = await window.showDirectoryPicker({ mode: 'readwrite', id: 'homework-board' });
-    state.dirHandle = h;
-    await idbSet('dirHandle', h);
-    return true;
-  } catch (e) {
-    if (e.name !== 'AbortError') toast('选择目录失败：' + e.message, true);
-    return false;
-  }
-}
-
-async function restoreDir(needGesture = false) {
-  if (!state.dirHandle) {
-    try { state.dirHandle = await idbGet('dirHandle'); } catch (_) {}
-  }
-  if (!state.dirHandle) return false;
-  try {
-    let p = await state.dirHandle.queryPermission({ mode: 'readwrite' });
-    if (p === 'granted') return true;
-    if (needGesture) {
-      p = await state.dirHandle.requestPermission({ mode: 'readwrite' });
-      if (p === 'granted') return true;
-    }
+    if (c) localStorage.setItem(CRED_KEY, JSON.stringify(c));
+    else localStorage.removeItem(CRED_KEY);
   } catch (_) {}
-  return false;
 }
 
-async function resolveParent(path, create) {
-  const parts = path.split('/');
-  const name = parts.pop();
-  let d = state.dirHandle;
-  for (const seg of parts) d = await d.getDirectoryHandle(seg, { create });
-  return { dir: d, name };
+/* ---------- WebDAV ----------
+   浏览器不能直连坚果云（响应里没有 Access-Control-Allow-Origin，预检必失败），
+   所以全部请求打到本机 serve.py 的 /dav-proxy，由它原样转发。
+   base 和 path 分开传，服务端拼起来再统一百分号编码，中文目录名不会二次编码。 */
+function davUrl(path) {
+  const b = state.dav.base.replace(/\/+$/, '');
+  return path ? `${b}/${path}` : b;
+}
+
+function authHeader(c) {
+  const bytes = new TextEncoder().encode(`${c.user}:${c.pass}`);
+  let s = '';
+  for (const b of bytes) s += String.fromCharCode(b);
+  return 'Basic ' + btoa(s);
+}
+
+async function dav(path, opts = {}) {
+  const c = opts.creds || state.dav;
+  if (!c) throw new Error('还没连接坚果云');
+  const qs = 'base=' + encodeURIComponent(c.base) + '&path=' + encodeURIComponent(path || '');
+  const headers = { Authorization: authHeader(c), ...(opts.headers || {}) };
+  const r = await fetch('/dav-proxy?' + qs, {
+    method: opts.method || 'GET',
+    headers,
+    body: opts.body === undefined ? undefined : opts.body,
+  });
+  if (r.status === 401 || r.status === 403) {
+    throw new Error('账号或密码不对：要用「应用专用密码」，不是登录密码');
+  }
+  return r;
+}
+
+async function restoreDir() {
+  if (state.dav) return true;
+  const c = loadCreds();
+  if (!c || !c.pass) return false;
+  state.dav = c;
+  return true;
+}
+
+function dirLabel() {
+  if (!state.dav) return '';
+  try {
+    const u = new URL(state.dav.base);
+    const seg = u.pathname.split('/').filter(Boolean).pop();
+    return seg ? decodeURIComponent(seg) + '/' : u.host + '/';
+  } catch (_) { return state.dav.base; }
+}
+
+/* 目录建一次就记住，别每张图都 MKCOL 一遍（坚果云对请求频率敏感） */
+const madeDirs = new Set();
+
+async function ensureDir(path) {
+  if (!path || madeDirs.has(path)) return;
+  let acc = '';
+  for (const seg of path.split('/').filter(Boolean)) {
+    acc = acc ? `${acc}/${seg}` : seg;
+    if (madeDirs.has(acc)) continue;
+    const r = await dav(acc, { method: 'MKCOL' });
+    // 201 新建；405 已经存在——都算成功
+    if (![200, 201, 204, 405].includes(r.status)) {
+      throw new Error(`建目录 ${acc} 失败：HTTP ${r.status}`);
+    }
+    madeDirs.add(acc);
+  }
 }
 
 async function readText(path) {
-  try {
-    const { dir, name } = await resolveParent(path, false);
-    const fh = await dir.getFileHandle(name);
-    const f = await fh.getFile();
-    return await f.text();
-  } catch (e) {
-    return null; // 不存在
-  }
+  const r = await dav(path, { method: 'GET' });
+  if (r.status === 404) return null;
+  if (!r.ok) throw new Error(`读 ${path} 失败：HTTP ${r.status}`);
+  return await r.text();
 }
 
 async function readBlob(path) {
-  const { dir, name } = await resolveParent(path, false);
-  const fh = await dir.getFileHandle(name);
-  return await fh.getFile();
+  const r = await dav(path, { method: 'GET' });
+  if (!r.ok) throw new Error(`读 ${path} 失败：HTTP ${r.status}`);
+  return await r.blob();
 }
 
-async function writeFile(path, data) {
-  const { dir, name } = await resolveParent(path, true);
-  const fh = await dir.getFileHandle(name, { create: true });
-  const w = await fh.createWritable();
-  await w.write(data);
-  await w.close();
+async function writeFile(path, data, contentType) {
+  const dir = path.split('/').slice(0, -1).join('/');
+  if (dir) await ensureDir(dir);
+  const type = contentType
+    || (typeof data === 'string' ? 'application/json; charset=utf-8' : (data.type || 'application/octet-stream'));
+  const r = await dav(path, {
+    method: 'PUT',
+    body: data,
+    headers: { 'Content-Type': type },
+  });
+  if (!r.ok) throw new Error(`写 ${path} 失败：HTTP ${r.status}`);
 }
 
 async function writeJSON(path, obj) {
-  await writeFile(path, JSON.stringify(obj, null, 2));
+  await writeFile(path, JSON.stringify(obj, null, 2), 'application/json; charset=utf-8');
 }
 
 /**
@@ -389,7 +436,7 @@ async function updateManifest(date, itemCount, validUntil = '') {
     date,
     weekday: weekdayOf(date),
     file: `day/${date}.json`,
-    fileEtag: '',           // 本地写入没有服务端 ETag，留空由电视端降级处理
+    fileEtag: '',           // 坚果云 HEAD 不回 ETag（要 PROPFIND 才有），留空由电视端降级处理
     itemCount,
     updatedAt: nowISO(),
     // 索引里也带一份：电视端要回答「今天该显示哪一天」，
@@ -600,7 +647,7 @@ function addFiles(files) {
 /* ---------- 保存 ---------- */
 async function save() {
   if (state.writing) return;
-  if (!(await restoreDir(true))) { $('gate').hidden = false; $('app').hidden = true; return; }
+  if (!(await restoreDir())) { showGate(); return; }
 
   const title = $('title').value.trim();
   const detail = $('detail').value.trim();
@@ -725,16 +772,61 @@ async function switchDate(next) {
 }
 
 /* ---------- 启动 ---------- */
+function showGate() {
+  const c = state.dav || loadCreds() || {};
+  $('davBase').value = c.base || DEFAULT_BASE;
+  $('davUser').value = c.user || '';
+  $('davPass').value = c.pass || '';
+  $('gateErr').textContent = '';
+  $('gate').hidden = false;
+  $('app').hidden = true;
+  $('davUser').focus();
+}
+
+/* 连接：先 PROPFIND 探一下目录，401 会由 dav() 直接抛出「密码不对」；
+   404 说明目录还没建，MKCOL 一个出来。 */
+async function connect() {
+  const base = ($('davBase').value || '').trim().replace(/\/+$/, '');
+  const user = $('davUser').value.trim();
+  const pass = $('davPass').value;
+  const remember = $('davRemember').checked;
+  const err = $('gateErr');
+
+  err.textContent = '';
+  if (!/^https?:\/\//i.test(base)) { err.textContent = '目录地址要以 https:// 开头'; return; }
+  if (!user || !pass) { err.textContent = '账号和应用专用密码都要填'; return; }
+
+  const btn = $('connBtn');
+  btn.disabled = true;
+  btn.textContent = '连接中…';
+  const creds = { base, user, pass };
+  try {
+    let r = await dav('', { method: 'PROPFIND', headers: { Depth: '0' }, creds });
+    if (r.status === 404) {
+      r = await dav('', { method: 'MKCOL', creds });
+      if (![200, 201, 204].includes(r.status)) {
+        throw new Error(`目录不存在，自动创建失败：HTTP ${r.status}`);
+      }
+    } else if (!r.ok) {
+      throw new Error(`连不上这个目录：HTTP ${r.status}`);
+    }
+    state.dav = creds;
+    saveCreds(remember ? creds : { base, user, pass: '' });
+    await enterApp();
+  } catch (e) {
+    state.dav = null;
+    err.textContent = e.message || String(e);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '连接';
+  }
+}
+
 async function boot() {
   $('topDate').textContent = dateLabel(state.date);
   renderChips();
 
-  const ok = await restoreDir(false);
-  if (!ok) {
-    $('gate').hidden = false;
-    $('app').hidden = true;
-    return;
-  }
+  if (!(await restoreDir())) { showGate(); return; }
   await enterApp();
 }
 
@@ -744,7 +836,8 @@ async function enterApp() {
 
   const c = $('conn');
   c.className = 'conn on';
-  $('connText').textContent = state.dirHandle.name + '/';
+  $('connText').textContent = dirLabel();
+  madeDirs.clear();
 
   try {
     const day = await loadDay(state.date);
@@ -762,7 +855,12 @@ async function enterApp() {
 }
 
 /* ---------- 事件 ---------- */
-$('pickBtn').onclick = async () => { if (await pickDir()) await enterApp(); };
+$('connBtn').onclick = connect;
+$('settingsBtn').onclick = () => { state.dav = state.dav || loadCreds(); showGate(); };
+$('conn').onclick = () => { state.dav = state.dav || loadCreds(); showGate(); };
+// 连接表单里回车即提交
+['davBase', 'davUser', 'davPass'].forEach((id) =>
+  $(id).addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); connect(); } }));
 
 $('saveBtn').onclick = save;
 
