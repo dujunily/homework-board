@@ -95,6 +95,13 @@
 
 ## 快速开始
 
+> **不想编译？** 直接去 [Releases](https://github.com/dujunily/homework-board/releases) 下打包好的：
+> `homework-board-tv-*.apk`（电视）、`homework-board-phone-*.apk`（手机）、
+> `homework-board-web-*.zip`（网页端，解压后双击启动脚本即可）。
+>
+> 资源文件名用英文，是因为 GitHub 上传 release 资产时会把中文名整段丢掉（会变成 `-.zip` 这种），
+> 仓库里和本地 `dist/` 下仍然是中文名。
+
 ### 0. 你需要准备
 
 | 项 | 要求 |
