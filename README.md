@@ -7,6 +7,32 @@
 
 <br>
 
+<p align="center">
+  <img src="docs/screenshots/tv-home.webp" width="860" alt="电视端：一屏显示当天全部作业，行尾带配图缩略图">
+</p>
+
+<p align="center">
+  <sub><b>电视端</b>　一屏放下当天全部作业，字号按内容自动缩放；行尾是配图缩略图，遥控器按 OK 全屏翻页</sub>
+</p>
+
+<br>
+
+| 手机端 · 记作业 | 手机端 · 改这条 | 手机端 · 全屏看图 |
+|:---:|:---:|:---:|
+| <img src="docs/screenshots/phone-home.webp" width="215"> | <img src="docs/screenshots/phone-edit.webp" width="215"> | <img src="docs/screenshots/phone-photo.webp" width="215"> |
+| 选科目、写标题、加图，一发就到电视 | 改文字、补图、删条目 | 缩略图点开就是大图，可左右翻页 |
+
+<br>
+
+| 电脑网页端 · 新增一条 | 电脑网页端 · 编辑这条 |
+|:---:|:---:|
+| <img src="docs/screenshots/web-main.webp" width="390"> | <img src="docs/screenshots/web-edit.webp" width="390"> |
+| 左边列表、右边表单，一屏连写五条 | 点左侧任一条就能改，配图带缩略图 |
+
+> 截图用的是演示数据，不是任何人的真实作业。
+
+<br>
+
 ## 这是什么
 
 一个家庭自用的小工具，解决两个很具体的问题：
