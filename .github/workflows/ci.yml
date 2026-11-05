@@ -63,6 +63,8 @@ jobs:
 
       - name: 检查产物（含 zip 的中文名与可执行位）
         shell: bash
+        env:
+          PYTHONIOENCODING: utf-8
         run: |
           test -f "dist/网页版/index.html"
           test -f "dist/网页版/serve.py"
@@ -71,13 +73,13 @@ jobs:
           import zipfile
           z = zipfile.ZipFile("dist/作业板-网页版.zip")
           names = {i.filename: i for i in z.infolist()}
-          assert "网页版/index.html" in names, names.keys()
+          assert "网页版/index.html" in names, list(names)
           for i in z.infolist():
-              assert i.flag_bits & 0x800, "文件名没带 UTF-8 标志位：" + i.filename
+              assert i.flag_bits & 0x800, "missing UTF-8 flag: " + i.filename
           for exe in ("网页版/启动-网页版.command", "网页版/start.sh"):
               mode = names[exe].external_attr >> 16
-              assert mode & 0o111, "丢了可执行位：" + exe
-          print("zip 元数据正常，%d 项" % len(names))
+              assert mode & 0o111, "lost exec bit: " + exe
+          print("zip metadata OK, %d entries" % len(names))
           PY
 
   # 真正的 Android 构建只在一个系统上跑（三端代码是同一份，没必要烧三次）
