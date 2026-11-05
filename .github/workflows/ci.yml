@@ -1,0 +1,111 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  # 三个系统跑同一套东西：网页端逻辑自测 + 网页端打包 + 脚本语法
+  cross-platform:
+    name: ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: 网页端逻辑自测（不依赖浏览器）
+        shell: bash
+        run: node webapp/test-logic.js
+
+      - name: 脚本语法检查
+        shell: bash
+        run: |
+          bash -n scripts/build.sh
+          sh -n webapp/start.sh
+
+      - name: PowerShell 语法检查
+        shell: pwsh
+        run: |
+          $bad = 0
+          foreach ($f in @('webapp/serve.ps1', 'scripts/build.ps1')) {
+            $errs = $null
+            [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $f).Path, [ref]$null, [ref]$errs) | Out-Null
+            if ($errs.Count -gt 0) {
+              $bad = 1
+              $errs | ForEach-Object { Write-Host ("  " + $_.Message + " @ " + $_.Extent.StartLineNumber) }
+            }
+          }
+          if ($bad) { exit 1 }
+          Write-Host 'PowerShell 语法 OK'
+
+      - name: 打包网页端（Windows · PowerShell 5.1）
+        if: runner.os == 'Windows'
+        shell: cmd
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File scripts\build.ps1 -Target web
+
+      - name: 打包网页端（macOS / Linux）
+        if: runner.os != 'Windows'
+        shell: bash
+        run: ./scripts/build.sh web
+
+      - name: 检查产物（含 zip 的中文名与可执行位）
+        shell: bash
+        run: |
+          test -f "dist/网页版/index.html"
+          test -f "dist/网页版/serve.py"
+          test -f "dist/作业板-网页版.zip"
+          python3 - <<'PY'
+          import zipfile
+          z = zipfile.ZipFile("dist/作业板-网页版.zip")
+          names = {i.filename: i for i in z.infolist()}
+          assert "网页版/index.html" in names, names.keys()
+          for i in z.infolist():
+              assert i.flag_bits & 0x800, "文件名没带 UTF-8 标志位：" + i.filename
+          for exe in ("网页版/启动-网页版.command", "网页版/start.sh"):
+              mode = names[exe].external_attr >> 16
+              assert mode & 0o111, "丢了可执行位：" + exe
+          print("zip 元数据正常，%d 项" % len(names))
+          PY
+
+  # 真正的 Android 构建只在一个系统上跑（三端代码是同一份，没必要烧三次）
+  android:
+    name: android-apk
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: 单元测试
+        run: ./gradlew :core:test --no-daemon
+
+      - name: 打包两个 release APK
+        run: ./scripts/build.sh apk
+
+      - name: 检查产物
+        run: |
+          ls -lh dist/
+          test -n "$(find dist -name '作业板-TV-*.apk')"
+          test -n "$(find dist -name '作业板-手机-*.apk')"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: apk
+          path: dist/*.apk
+          if-no-files-found: error

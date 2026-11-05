@@ -47,6 +47,13 @@
 - 条目级合并：两端同时改不同条目不会互相覆盖；同一条都改过则按时间取新，真的撞了才留一份「冲突副本」
 - 节假日规则：周五、周六布置的自动管到周日；长假手动延长
 
+**电脑网页端**（`webapp/`，Windows / macOS / Linux 都能跑）
+
+- 一个 `index.html`，**不联网、不碰账号密码**：直接写本地文件，坚果云客户端负责上传
+- 批量录入：一屏连写五条，还能切前一天/后一天，周末把一周排好
+- `⌘V / Ctrl+V` 直接粘贴截图，也能一次拖入多张
+- 写入前先读后合并、写完回读校验，不会静默覆盖手机端写的内容
+
 <br>
 
 ## 工作原理
@@ -56,6 +63,12 @@
   │  手机 App │ ───────► │  你的坚果云      │ ◄─────── │ 电视 App  │
   └──────────┘  WebDAV   │  (WebDAV 目录)   │  WebDAV  └──────────┘
                         └─────────────────┘
+                                   ▲
+                                   │ 写本地文件（坚果云客户端同步）
+                        ┌──────────┴─────────┐
+                        │ 电脑网页（浏览器）  │
+                        └────────────────────┘
+
    局域网 UDP 广播（47823）──── 手机存完喊一嗓子 ────► 电视 1~2 秒内拉取
 ```
 
@@ -88,33 +101,70 @@
 |---|---|
 | 坚果云账号 | 免费版即可（WebDAV 可用），[注册](https://www.jianguoyun.com/) |
 | 应用专用密码 | 坚果云网页 → 账户信息 → 安全选项 → 添加应用 → 生成。**用登录密码一定 403** |
-| 编译环境 | JDK 17+（本项目用 21 验证）、Android SDK 35 |
+| 编译环境 | JDK 17+（本项目用 21 验证）、Android SDK 35。Windows / macOS / Linux 都可以 |
+| 网页端 | 只要一个现代浏览器（Chrome / Edge）；本地服务需要 Python 3.7+，Windows 没有 Python 也行 |
 | 电视 | Android 6.0+（minSdk 23）。小米电视、Android TV、投影、电视盒子均可 |
 | 手机 | Android 7.0+（minSdk 24） |
 
 ### 1. 编译
 
+三个平台都有脚本，**Windows / macOS / Linux 行为一致**：自动找 JDK、自动找 Android SDK、
+自动写 `local.properties`、打完按版本号改名放进 `dist/`。
+
 ```bash
 git clone https://github.com/dujunily/homework-board.git
 cd homework-board
+```
 
-# 告诉 Gradle SDK 在哪（这个文件不进仓库，每人本地一份）
-echo "sdk.dir=$HOME/Library/Android/sdk" > local.properties   # macOS
-# echo "sdk.dir=$HOME/Android/Sdk" > local.properties         # Linux
-# Windows 手动建，写 sdk.dir=C\:\\Users\\你\\AppData\\Local\\Android\\Sdk
+| 你的系统 | 一条命令 | 或者双击 |
+|---|---|---|
+| macOS / Linux | `./scripts/build.sh` | — |
+| Windows | `.\scripts\build.ps1` | `scripts\build.cmd` |
 
-# 电视端
-./gradlew :tvapp:assembleRelease
-# 手机端
-./gradlew :phoneapp:assembleRelease
+```bash
+./scripts/build.sh           # 电视端 + 手机端 + 网页端，全打
+./scripts/build.sh tv        # 只打电视端
+./scripts/build.sh phone     # 只打手机端
+./scripts/build.sh apk       # 两个 APK，不碰网页端
+./scripts/build.sh web       # 只打包网页端（不需要 JDK / Android SDK）
+./scripts/build.sh --help
 ```
 
 产物：
 
 ```
-tvapp/build/outputs/apk/release/tvapp-release.apk      约 1.4 MB
-phoneapp/build/outputs/apk/release/phoneapp-release.apk 约 1.7 MB
+dist/作业板-TV-0.2.16.apk          约 1.4 MB
+dist/作业板-手机-0.2.18.apk        约 1.7 MB
+dist/网页版/                       可直接托管 / 拷给别人用的网页端
+dist/作业板-网页版.zip             同上，带了 UTF-8 文件名和可执行位
 ```
+
+**脚本会替你做的三件容易踩的事**：
+
+1. **挑对 JDK**。`JAVA_HOME` 常年还指着 JDK 8，而 Gradle 8.10 又跑不动 JDK 24+，
+   所以脚本按 `21 → 17 → 22 → 23 → 18~20` 的顺序挑，挑不到才报错并把安装命令打出来。
+2. **找 Android SDK**。依次看 `ANDROID_HOME`、`ANDROID_SDK_ROOT`、`local.properties`、
+   各平台常见安装路径；认定标准是目录里有 `platforms/`。
+3. **写 `local.properties`**。Windows 上会自动转义成 `sdk.dir=C\:\\Users\\…\\Sdk`，
+   省得手抄反斜杠抄错。
+
+<details>
+<summary>不想用脚本，手动编译（点开）</summary>
+
+```bash
+# 告诉 Gradle SDK 在哪（这个文件不进仓库，每人本地一份）
+echo "sdk.dir=$HOME/Library/Android/sdk" > local.properties   # macOS
+# echo "sdk.dir=$HOME/Android/Sdk" > local.properties         # Linux
+# Windows 写 sdk.dir=C\:\\Users\\你\\AppData\\Local\\Android\\Sdk
+
+./gradlew :tvapp:assembleRelease      # 电视端
+./gradlew :phoneapp:assembleRelease   # 手机端
+./gradlew :core:test                  # 单元测试
+```
+
+产物在 `tvapp/build/outputs/apk/release/` 与 `phoneapp/build/outputs/apk/release/`。
+
+</details>
 
 > **关于镜像**：`gradle/wrapper/gradle-wrapper.properties` 里默认用腾讯云镜像下载 Gradle，
 > 国内快。海外网络如遇卡住，把 `distributionUrl` 换回
@@ -178,7 +228,35 @@ adb install -r phoneapp-release.apk
 
 两端都连着同一个坚果云目录后，手机点「发到电视」，电视 1~2 秒内就会更新。
 
-### 5. 开机自启（可选，但建议）
+### 5. 电脑网页端（可选）
+
+不需要编译，也不需要装任何东西。**Windows / macOS / Linux 三套入口逻辑一致**：
+起一个只监听 `127.0.0.1` 的静态服务，然后自动开浏览器。
+
+| 系统 | 双击 | 实际跑的是 |
+|---|---|---|
+| Windows | `webapp\启动-网页版.bat` | 有 Python 就 `py -3 serve.py`；没有就用 `serve.ps1`（PowerShell 内置，零依赖） |
+| macOS | `webapp/启动-网页版.command` | `start.sh` → `python3 serve.py` |
+| Linux | `webapp/start.sh` | 同上 |
+
+命令行也行：
+
+```bash
+python3 webapp/serve.py            # 自动挑空端口（8123 起）
+python3 webapp/serve.py 8123       # 指定端口
+python3 webapp/serve.py --no-open  # 只起服务
+```
+
+启动后点「选择文件夹」，选中坚果云同步文件夹里的 `作业板` 目录即可（只需选一次）。
+
+**必须用 Chrome 或 Edge**（Safari / Firefox 没有 File System Access API）。
+**也必须是 `http://127.0.0.1`，不能直接双击 `index.html`**——`file://` 不是安全上下文，
+「选择文件夹」拿不到写入授权。
+
+> 细节和自测说明见 [`webapp/README.md`](webapp/README.md)。
+> 网页端完全不联网、不碰账号密码，只写本地文件，由坚果云客户端负责上传。
+
+### 6. 开机自启（可选，但建议）
 
 App 会监听开机广播，但 **Android 10+ 会拦「后台启动界面」**，需要授权一次，任选一种：
 
@@ -223,6 +301,15 @@ adb shell appops set cn.yiweiqiu.homeworkboard SYSTEM_ALERT_WINDOW allow
 - 点作业条目进入编辑，可改可删
 - 点缩略图全屏看，顶部有页码和「删除这张」
 - 首页列表下方的「今日提醒」写整天的备注，写的是和网页端、电视端同一个 `notes` 字段
+
+### 电脑网页端
+
+- 左边是当天列表，右边是编辑表单；点列表项即可改，改完「保存并同步」
+- 右上角 `‹` `›` 切前一天/后一天（**只有电脑端能改日期**，适合周末把一周的作业排好），
+  不在今天时会出现「回到今天」
+- 图片可以 `⌘V / Ctrl+V` 直接粘贴截图，也可以一次拖入多张
+- 同一个「今日提醒」入口，写的是和手机端、电视端同一个 `notes` 字段
+- 「显示到哪天」三档：只今天 / 到这周日 / 再连休 7 天（和手机端一致）
 
 ### 节假日与「管到哪天」
 
@@ -283,7 +370,8 @@ adb shell appops set cn.yiweiqiu.homeworkboard SYSTEM_ALERT_WINDOW allow
 - **电视端只有一个「今天」，没有历史浏览**。做完的作业自动翻篇，要看旧的得去云端看 json。
 - **照片不做 OCR**，作业内容是自己打进去的文字，配图只是附件。
 - **没有多孩子支持**：一个坚果云目录对应一份作业，多孩请用两个目录（两份配置）。
-- **网页端不在本仓库**：另有一个单文件网页版，读写同一套数据格式，可放坚果云或任意静态托管。
+- **网页端只支持 Chrome / Edge**，且必须通过本地服务打开（`file://` 拿不到文件夹写入权限）。
+- **同一天别在手机和网页同时编辑**：两边都是「读-改-写」，几乎同时保存时后写的一方会覆盖前一方。
 - 局域网广播穿不过 AP 隔离（访客网络常见），退回轮询即可。
 - 电视端界面里没有深浅色开关，跟随系统。Android TV 系统锁定深色，所以电视上就是深色。
 - 手机端的「发到电视」依赖两端在同一局域网，或者靠 WorkManager 的定时兜底。
@@ -296,12 +384,15 @@ adb shell appops set cn.yiweiqiu.homeworkboard SYSTEM_ALERT_WINDOW allow
 homework-board/
 ├── core/       共享逻辑（Android Library）：WebDAV 客户端、数据模型、同步引擎、缓存
 ├── tvapp/      电视端（Compose for TV 风格手写焦点）
-└── phoneapp/   手机端（Compose Material3）
+├── phoneapp/   手机端（Compose Material3）
+├── webapp/     电脑网页端（单文件 index.html + 本地静态服务，三平台启动器）
+└── scripts/    构建脚本（build.sh / build.ps1 / build.cmd）
 ```
 
 - Kotlin + Jetpack Compose，`kotlinx.serialization` 做数据契约
 - 两端共用 `core`，数据格式与合并算法只有一份实现
 - 单元测试：`./gradlew :core:test`（`DayRule` 的节假日推算等纯逻辑）
+- 网页端自测：`node webapp/test-logic.js`（不需要浏览器，30 条断言）
 
 **改代码时请留意**（都是踩过的坑）：
 

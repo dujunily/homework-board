@@ -1,0 +1,787 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>作业板 · 录入</title>
+<style>
+  :root{
+    --bg:#f5f4f1; --card:#ffffff; --line:#e5e1d8; --ink:#211f1c; --muted:#8d8880;
+    --accent:#2f6f4f; --accent-hover:#255a40; --danger:#b4462f; --warnbg:#fdf4e3;
+    --r:14px;
+    --font:-apple-system,BlinkMacSystemFont,"PingFang SC","Helvetica Neue",Arial,sans-serif;
+  }
+  *{box-sizing:border-box}
+  [hidden]{display:none !important}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font);font-size:15px;line-height:1.55;-webkit-font-smoothing:antialiased}
+
+  /* ---------- 顶栏 ---------- */
+  topbar{display:flex;align-items:center;gap:14px;padding:14px 22px;background:#fff;border-bottom:1px solid var(--line);position:sticky;top:0;z-index:20}
+  topbar .brand{font-size:17px;font-weight:650;letter-spacing:.5px}
+  topbar .date{color:var(--muted);font-size:14px}
+  .datebar{display:flex;align-items:center;gap:2px}
+  .daybtn{border:none;background:transparent;color:var(--muted);font-size:18px;line-height:1;
+    padding:4px 7px;border-radius:7px;cursor:pointer}
+  .daybtn:hover{background:rgba(0,0,0,.06);color:var(--ink)}
+  .daybtn.today{font-size:12px;padding:5px 9px;border:1px solid var(--line);color:var(--ink)}
+  topbar .spacer{flex:1}
+  .conn{display:flex;align-items:center;gap:7px;font-size:13px;color:var(--muted);max-width:44vw}
+  .conn .dot{width:8px;height:8px;border-radius:50%;background:#c9c4ba;flex:none}
+  .conn.on .dot{background:var(--accent)}
+  .conn.off .dot{background:var(--danger)}
+  .conn .path{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+  /* ---------- 布局 ---------- */
+  main{display:grid;grid-template-columns:390px minmax(0,1fr);gap:22px;padding:22px;max-width:1240px;margin:0 auto;align-items:start}
+  @media(max-width:940px){main{grid-template-columns:1fr}}
+
+  .card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:18px}
+  .card h2{margin:0 0 12px;font-size:14px;font-weight:650;color:var(--muted);letter-spacing:.5px;text-transform:none;display:flex;align-items:center;gap:8px}
+  .card h2 .count{font-weight:500;color:var(--muted);font-size:13px}
+
+  /* ---------- 左栏列表 ---------- */
+  .list{display:flex;flex-direction:column;gap:8px;margin-bottom:16px}
+  .row{display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--line);border-radius:11px;cursor:pointer;background:#fcfbf9;transition:.12s}
+  .row:hover{border-color:#d3cdc0;background:#fff}
+  .row.active{border-color:var(--accent);background:#f2f8f4}
+  .row .sb{width:6px;height:30px;border-radius:3px;flex:none;background:#c9c4ba}
+  .row .t{flex:1;min-width:0}
+  .row .t b{display:block;font-weight:600;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .row .t span{display:block;font-size:12.5px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .row .imgs{font-size:12px;color:var(--muted);flex:none}
+  .row .del{border:0;background:transparent;color:#c0b9ad;font-size:16px;cursor:pointer;padding:2px 4px;border-radius:6px;flex:none}
+  .row .del:hover{color:var(--danger);background:#fbeeea}
+  .empty{color:var(--muted);font-size:13.5px;padding:14px 0;text-align:center}
+
+  .hint{font-size:12.5px;color:var(--muted);margin-top:6px}
+  .hint.warn{color:var(--danger)}
+
+  /* ---------- 右栏表单 ---------- */
+  label.f{display:block;font-size:12.5px;color:var(--muted);margin:14px 0 6px}
+  label.f:first-child{margin-top:0}
+  .chips{display:flex;gap:8px;flex-wrap:wrap}
+  .chip{border:1px solid var(--line);background:#fcfbf9;border-radius:999px;padding:6px 15px;font-size:14px;cursor:pointer;font-family:inherit;color:var(--ink);transition:.12s}
+  .chip:hover{border-color:#cfc9bc}
+  .chip.on{background:var(--accent);border-color:var(--accent);color:#fff}
+  input[type=text],textarea{width:100%;border:1px solid var(--line);border-radius:10px;padding:11px 13px;font-family:inherit;font-size:15px;background:#fcfbf9;color:var(--ink);outline:none;transition:.12s}
+  input[type=text]:focus,textarea:focus{border-color:var(--accent);background:#fff;box-shadow:0 0 0 3px rgba(47,111,79,.08)}
+  textarea{resize:vertical;min-height:78px;line-height:1.6}
+
+  /* ---------- 图片区 ---------- */
+  .drop{border:1.5px dashed #d8d2c5;border-radius:12px;padding:16px;text-align:center;color:var(--muted);font-size:13.5px;cursor:pointer;background:#fcfbf9;transition:.12s}
+  .drop:hover,.drop.over{border-color:var(--accent);background:#f2f8f4;color:var(--accent)}
+  .thumbs{display:flex;gap:9px;flex-wrap:wrap;margin-top:11px}
+  .thumb{position:relative;width:86px;height:86px;border-radius:9px;overflow:hidden;border:1px solid var(--line);background:#eee}
+  .thumb img{width:100%;height:100%;object-fit:cover;display:block}
+  .thumb button{position:absolute;top:3px;right:3px;width:20px;height:20px;border-radius:50%;border:0;background:rgba(0,0,0,.55);color:#fff;font-size:12px;line-height:20px;cursor:pointer;padding:0}
+
+  /* ---------- 按钮 ---------- */
+  .actions{display:flex;gap:10px;align-items:center;margin-top:20px}
+  .btn{border:0;border-radius:11px;padding:12px 22px;font-size:15px;font-weight:600;font-family:inherit;cursor:pointer;transition:.12s}
+  .btn.primary{background:var(--accent);color:#fff}
+  .btn.primary:hover{background:var(--accent-hover)}
+  .btn.primary:disabled{opacity:.45;cursor:not-allowed}
+  .btn.ghost{background:transparent;color:var(--muted);border:1px solid var(--line)}
+  .btn.ghost:hover{color:var(--ink);border-color:#cfc9bc}
+  .kbd{font-size:12px;color:var(--muted);margin-left:auto}
+
+  /* ---------- 提示 ---------- */
+  #toast{position:fixed;left:50%;bottom:34px;transform:translate(-50%,20px);background:#211f1c;color:#fff;padding:11px 22px;border-radius:11px;font-size:14px;opacity:0;pointer-events:none;transition:.22s;z-index:99;max-width:80vw}
+  #toast.show{opacity:1;transform:translate(-50%,0)}
+  #toast.err{background:var(--danger)}
+
+  .gate{max-width:520px;margin:52px auto;background:#fff;border:1px solid var(--line);border-radius:var(--r);padding:32px;text-align:center}
+  .gate h1{font-size:20px;margin:0 0 10px}
+  .gate p{color:var(--muted);font-size:14px;margin:0 0 20px;line-height:1.7}
+  .gate .tip{font-size:12.5px;color:var(--muted);margin-top:18px;text-align:left;background:#faf9f6;border-radius:10px;padding:12px 14px;line-height:1.7}
+  code{background:#efede7;padding:1.5px 6px;border-radius:5px;font-size:12.5px;font-family:ui-monospace,Menlo,monospace}
+</style>
+</head>
+<body>
+
+<topbar>
+  <div class="brand">作业板</div>
+  <div class="datebar">
+    <button class="daybtn" id="prevDay" title="前一天">‹</button>
+    <div class="date" id="topDate">—</div>
+    <button class="daybtn" id="nextDay" title="后一天">›</button>
+    <button class="daybtn today" id="todayBtn" hidden>回到今天</button>
+  </div>
+  <div class="spacer"></div>
+  <div class="conn" id="conn"><span class="dot"></span><span class="path" id="connText">未连接同步目录</span></div>
+</topbar>
+
+<div id="gate" class="gate" hidden>
+  <h1>选择坚果云同步目录</h1>
+  <p>选中电脑上坚果云同步文件夹里的 <code>作业板</code> 目录。<br>只需要选一次，之后会自动记住。</p>
+  <button class="btn primary" id="pickBtn">选择文件夹</button>
+  <div class="tip">
+    本页面直接写本地文件，<b>不联网、不传图、不碰账号密码</b>，坚果云客户端会自己把文件同步上去。<br>
+    需要 Chrome 或 Edge 打开（Safari 不支持文件夹写入）。
+  </div>
+</div>
+
+<main id="app" hidden>
+  <!-- 左：今日列表 -->
+  <section class="card">
+    <h2><span id="listTitle">今天已布置</span> <span class="count" id="itemCount"></span></h2>
+    <div class="list" id="list"></div>
+    <label class="f" style="margin-top:4px">今日备注（整天的提醒，如「明天带跳绳」）</label>
+    <input type="text" id="notes" placeholder="可不填">
+    <label class="f" style="margin-top:14px">电视端显示到哪天</label>
+    <div class="chips" id="untilChips"></div>
+    <div class="hint" id="untilHint"></div>
+    <div class="hint" id="countHint"></div>
+  </section>
+
+  <!-- 右：表单 -->
+  <section class="card">
+    <h2 id="formTitle">新增一条作业</h2>
+
+    <label class="f">科目</label>
+    <div class="chips" id="chips"></div>
+
+    <label class="f">标题（一句话说清做什么）</label>
+    <input type="text" id="title" placeholder="如：生字抄写" autocomplete="off">
+
+    <label class="f">详细说明（可不填，可换行）</label>
+    <textarea id="detail" placeholder="第 3 课生字，每字抄写 2 遍，写完自己检查一遍"></textarea>
+
+    <label class="f">图片（可直接 ⌘V 粘贴截图，或拖进来）</label>
+    <div class="drop" id="drop">点击选图 · 粘贴截图 · 拖入图片</div>
+    <input type="file" id="file" accept="image/*" multiple hidden>
+    <div class="thumbs" id="thumbs"></div>
+
+    <div class="actions">
+      <button class="btn primary" id="saveBtn">保存并同步</button>
+      <button class="btn ghost" id="resetBtn">清空</button>
+      <span class="kbd">⌘S 保存</span>
+    </div>
+  </section>
+</main>
+
+<div id="toast"></div>
+
+<script>
+/* ============================================================
+   作业板 · 电脑端录入页
+   ------------------------------------------------------------
+   设计原则：
+   1. 不联网。所有写入都是本地文件（File System Access API），
+      坚果云客户端负责上传，因此无需账号密码、无 CORS、断网可用。
+   2. 写盘顺序与手机 App 完全一致：
+      图片 → day/YYYY-MM-DD.json（先读后合并）→ manifest.json
+   3. 不破坏数据契约：只增字段、未知字段原样保留。
+   ============================================================ */
+
+const $ = (id) => document.getElementById(id);
+const SUBJECTS = ['语文', '数学', '英语', '其他'];
+const SUBJECT_COLORS = { '语文': '#c05a4a', '数学': '#3b7d9e', '英语': '#7a5ea8', '其他': '#6b8f5e' };
+const WEEKDAYS = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+const MAX_ITEMS_HINT = 6; // 电视端一屏放 6 条
+
+/* ---------- 状态 ---------- */
+const state = {
+  dirHandle: null,
+  date: today(),
+  items: [],
+  subject: localStorage.getItem('hb.subject') || '语文',
+  editingId: null,
+  validUntil: '',   // 这一天布置的作业管到哪天（空串 = 走默认规则）
+  pending: [],      // [{file?:File, existingPath?:string, url:string}]
+  writing: false,
+};
+
+function today() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+function weekdayOf(s) {
+  const [y, m, d] = s.split('-').map(Number);
+  return WEEKDAYS[new Date(y, m - 1, d).getDay()];
+}
+function dateLabel(s) {
+  const [, m, d] = s.split('-').map(Number);
+  return `${m}月${d}日 ${weekdayOf(s)}`;
+}
+
+/* ---------- 有效期（电视端显示到哪天） ----------
+   和手机端 DayRule 一套规则：
+   1. 周五、周六布置的默认管到周日，其余只管当天；
+   2. 放假、调休没有规律可推，由家长显式往后延（写进 day.validUntil）；
+   3. 显式值等于默认值时不写盘，保持契约干净（空串 = 走默认规则）。 */
+function addDays(date, n) {
+  const [y, m, d] = date.split('-').map(Number);
+  const dt = new Date(y, m - 1, d + n);
+  return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+}
+
+function defaultValidUntil(date) {
+  const [y, m, d] = date.split('-').map(Number);
+  const dow = new Date(y, m - 1, d).getDay();   // 0 = 周日
+  if (dow === 5) return addDays(date, 2);       // 周五 → 周日
+  if (dow === 6) return addDays(date, 1);       // 周六 → 周日
+  return date;
+}
+
+function nextSunday(date) {
+  const [y, m, d] = date.split('-').map(Number);
+  const dow = new Date(y, m - 1, d).getDay();
+  return addDays(date, (7 - dow) % 7);
+}
+function nowISO() {
+  const d = new Date();
+  const off = -d.getTimezoneOffset();
+  const p = (n) => String(Math.floor(Math.abs(n))).padStart(2, '0');
+  return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 19)
+    + (off >= 0 ? '+' : '-') + p(off / 60) + ':' + p(off % 60);
+}
+function randHex(len = 8) {
+  let s = '';
+  const a = '0123456789abcdef';
+  for (let i = 0; i < len; i++) s += a[Math.floor(Math.random() * 16)];
+  return s;
+}
+
+/* ---------- 提示 ---------- */
+let toastTimer = null;
+function toast(msg, isErr = false) {
+  const el = $('toast');
+  el.textContent = msg;
+  el.className = 'show' + (isErr ? ' err' : '');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { el.className = ''; }, isErr ? 4200 : 2200);
+}
+
+/* ---------- IndexedDB：记住目录句柄 ---------- */
+function idb() {
+  return new Promise((res, rej) => {
+    const r = indexedDB.open('homework-board', 1);
+    r.onupgradeneeded = () => { if (!r.result.objectStoreNames.contains('kv')) r.result.createObjectStore('kv'); };
+    r.onsuccess = () => res(r.result);
+    r.onerror = () => rej(r.error);
+  });
+}
+async function idbSet(k, v) {
+  const db = await idb();
+  return new Promise((res, rej) => {
+    const tx = db.transaction('kv', 'readwrite');
+    tx.objectStore('kv').put(v, k);
+    tx.oncomplete = res; tx.onerror = () => rej(tx.error);
+  });
+}
+async function idbGet(k) {
+  const db = await idb();
+  return new Promise((res, rej) => {
+    const q = db.transaction('kv', 'readonly').objectStore('kv').get(k);
+    q.onsuccess = () => res(q.result); q.onerror = () => rej(q.error);
+  });
+}
+
+/* ---------- 目录与文件 ---------- */
+async function pickDir() {
+  if (!window.showDirectoryPicker) {
+    toast('当前浏览器不支持文件夹写入，请用 Chrome 或 Edge 打开', true);
+    return false;
+  }
+  try {
+    const h = await window.showDirectoryPicker({ mode: 'readwrite', id: 'homework-board' });
+    state.dirHandle = h;
+    await idbSet('dirHandle', h);
+    return true;
+  } catch (e) {
+    if (e.name !== 'AbortError') toast('选择目录失败：' + e.message, true);
+    return false;
+  }
+}
+
+async function restoreDir(needGesture = false) {
+  if (!state.dirHandle) {
+    try { state.dirHandle = await idbGet('dirHandle'); } catch (_) {}
+  }
+  if (!state.dirHandle) return false;
+  try {
+    let p = await state.dirHandle.queryPermission({ mode: 'readwrite' });
+    if (p === 'granted') return true;
+    if (needGesture) {
+      p = await state.dirHandle.requestPermission({ mode: 'readwrite' });
+      if (p === 'granted') return true;
+    }
+  } catch (_) {}
+  return false;
+}
+
+async function resolveParent(path, create) {
+  const parts = path.split('/');
+  const name = parts.pop();
+  let d = state.dirHandle;
+  for (const seg of parts) d = await d.getDirectoryHandle(seg, { create });
+  return { dir: d, name };
+}
+
+async function readText(path) {
+  try {
+    const { dir, name } = await resolveParent(path, false);
+    const fh = await dir.getFileHandle(name);
+    const f = await fh.getFile();
+    return await f.text();
+  } catch (e) {
+    return null; // 不存在
+  }
+}
+
+async function readBlob(path) {
+  const { dir, name } = await resolveParent(path, false);
+  const fh = await dir.getFileHandle(name);
+  return await fh.getFile();
+}
+
+async function writeFile(path, data) {
+  const { dir, name } = await resolveParent(path, true);
+  const fh = await dir.getFileHandle(name, { create: true });
+  const w = await fh.createWritable();
+  await w.write(data);
+  await w.close();
+}
+
+async function writeJSON(path, obj) {
+  await writeFile(path, JSON.stringify(obj, null, 2));
+}
+
+/* ---------- 数据读写 ---------- */
+async function loadDay(date) {
+  const raw = await readText(`day/${date}.json`);
+  if (!raw) {
+    return { schemaVersion: 1, date, title: '今天的作业', updatedBy: '', updatedAt: nowISO(), items: [], notes: '' };
+  }
+  let obj;
+  try { obj = JSON.parse(raw); }
+  catch (e) { throw new Error(`day/${date}.json 格式损坏，请先手动修复（${e.message}）`); }
+  if (!Array.isArray(obj.items)) obj.items = [];
+  return obj; // 未知字段原样保留
+}
+
+async function updateManifest(date, itemCount, validUntil = '') {
+  let m = null;
+  const raw = await readText('manifest.json');
+  if (raw) { try { m = JSON.parse(raw); } catch (_) {} }
+  if (!m || typeof m !== 'object') m = { schemaVersion: 1, updatedAt: '', days: [] };
+  if (!Array.isArray(m.days)) m.days = [];
+
+  // 该日条目整体重写；fileEtag 留空，手机端下次写入时会补上真实值
+  m.schemaVersion = 1;
+  m.updatedAt = nowISO();
+  m.days = m.days.filter((d) => d.date !== date);
+  m.days.push({
+    date,
+    weekday: weekdayOf(date),
+    file: `day/${date}.json`,
+    fileEtag: '',           // 本地写入没有服务端 ETag，留空由电视端降级处理
+    itemCount,
+    updatedAt: nowISO(),
+    // 索引里也带一份：电视端要回答「今天该显示哪一天」，
+    // 不带上就得把每个候选日的 json 都读一遍才能判断
+    validUntil,
+  });
+  m.days.sort((a, b) => (a.date < b.date ? 1 : -1));
+  m.days = m.days.slice(0, 60);
+  await writeJSON('manifest.json', m);
+}
+
+/* ---------- 图片压缩 ---------- */
+const MAX_EDGE = 1600;
+const JPEG_Q = 0.8;
+
+async function compress(file) {
+  const bmp = await createImageBitmap(file);
+  const scale = Math.min(1, MAX_EDGE / Math.max(bmp.width, bmp.height));
+  const w = Math.max(1, Math.round(bmp.width * scale));
+  const h = Math.max(1, Math.round(bmp.height * scale));
+  const c = document.createElement('canvas');
+  c.width = w; c.height = h;
+  c.getContext('2d').drawImage(bmp, 0, 0, w, h);
+  if (bmp.close) bmp.close();
+  const blob = await new Promise((r) => c.toBlob(r, 'image/jpeg', JPEG_Q));
+  if (!blob) throw new Error('图片压缩失败');
+  return blob;
+}
+
+/* ---------- 渲染 ---------- */
+function renderChips() {
+  const box = $('chips');
+  box.innerHTML = '';
+  SUBJECTS.forEach((s) => {
+    const b = document.createElement('button');
+    b.className = 'chip' + (s === state.subject ? ' on' : '');
+    b.textContent = s;
+    b.onclick = () => { state.subject = s; localStorage.setItem('hb.subject', s); renderChips(); };
+    box.appendChild(b);
+  });
+}
+
+/* 有效期选择：三个够用的档，不摆日历——家长在假期里最不想做的事就是翻日历 */
+function untilOptions(date) {
+  const opts = [{ label: '只今天', date }];
+  const sun = nextSunday(date);
+  if (sun !== date) opts.push({ label: '到这周日', date: sun });
+  const week = addDays(date, 7);
+  if (week !== sun) opts.push({ label: '再连休 7 天', date: week });
+  return opts;
+}
+
+function renderUntil() {
+  const box = $('untilChips');
+  const date = state.date;
+  const current = state.validUntil || defaultValidUntil(date);
+  box.innerHTML = '';
+  untilOptions(date).forEach((o) => {
+    const b = document.createElement('button');
+    b.className = 'chip' + (o.date === current ? ' on' : '');
+    b.textContent = `${o.label} ${o.date.slice(5).replace('-', '/')}`;
+    b.onclick = () => setValidUntil(o.date);
+    box.appendChild(b);
+  });
+  $('untilHint').textContent = state.validUntil
+    ? `已手动延到 ${dateLabel(state.validUntil)}：这之前电视端都显示这一天的作业`
+    : `默认规则：周五、周六布置的自动管到周日（本日到 ${dateLabel(defaultValidUntil(date))}）`;
+}
+
+async function setValidUntil(v) {
+  try {
+    const day = await loadDay(state.date);
+    const dft = defaultValidUntil(state.date);
+    // 与默认值相同就不写盘：空串 = 走默认规则，契约上更干净
+    day.validUntil = v === dft ? '' : v;
+    day.updatedAt = nowISO();
+    await writeJSON(`day/${state.date}.json`, day);
+    await updateManifest(state.date, (day.items || []).length, day.validUntil);
+    state.validUntil = day.validUntil;
+    renderUntil();
+    toast(`电视端会显示到 ${dateLabel(v)}`);
+  } catch (e) {
+    console.error(e);
+    toast('设置失败：' + e.message + '（若坚果云正在占用文件，稍等几秒重试）', true);
+  }
+}
+
+function renderList() {
+  const box = $('list');
+  box.innerHTML = '';
+  const items = [...state.items].sort((a, b) => (a.order || 0) - (b.order || 0));
+
+  $('itemCount').textContent = items.length ? `共 ${items.length} 项` : '';
+
+  // 日期栏：不是今天就把「回到今天」露出来
+  $('topDate').textContent = dateLabel(state.date);
+  $('todayBtn').hidden = state.date === today();
+  $('listTitle').textContent = state.date === today() ? '今天已布置' : '这天已布置';
+
+  const hint = $('countHint');
+  if (items.length > MAX_ITEMS_HINT) {
+    hint.textContent = `已 ${items.length} 项：电视端会自动缩小字号，一屏放不下才需要遥控滚动`;
+    hint.className = 'hint warn';
+  } else {
+    hint.textContent = items.length ? `电视端一屏可完整显示（${MAX_ITEMS_HINT} 条一行式作业以内）` : '';
+    hint.className = 'hint';
+  }
+
+  if (!items.length) {
+    const d = document.createElement('div');
+    d.className = 'empty';
+    d.textContent = '今天还没布置，右边写一条试试';
+    box.appendChild(d);
+    return;
+  }
+
+  items.forEach((it) => {
+    const row = document.createElement('div');
+    row.className = 'row' + (it.id === state.editingId ? ' active' : '');
+
+    const sb = document.createElement('div');
+    sb.className = 'sb';
+    sb.style.background = SUBJECT_COLORS[it.subject] || SUBJECT_COLORS['其他'];
+
+    const t = document.createElement('div');
+    t.className = 't';
+    const b = document.createElement('b');
+    b.textContent = it.title || it.subject || '作业';
+    const sp = document.createElement('span');
+    sp.textContent = [it.subject, (it.detail || '').replace(/\n/g, ' ')].filter(Boolean).join(' · ') || '（无说明）';
+    t.append(b, sp);
+
+    const imgs = document.createElement('div');
+    imgs.className = 'imgs';
+    if (it.images && it.images.length) imgs.textContent = '图' + it.images.length;
+
+    const del = document.createElement('button');
+    del.className = 'del';
+    del.textContent = '×';
+    del.title = '删除这一条';
+    del.onclick = (e) => { e.stopPropagation(); removeItem(it); };
+
+    row.append(sb, t, imgs, del);
+    row.onclick = () => editItem(it);
+    box.appendChild(row);
+  });
+}
+
+function renderThumbs() {
+  const box = $('thumbs');
+  box.innerHTML = '';
+  state.pending.forEach((p, i) => {
+    const d = document.createElement('div');
+    d.className = 'thumb';
+    const img = document.createElement('img');
+    img.src = p.url;
+    const x = document.createElement('button');
+    x.textContent = '×';
+    x.onclick = () => { URL.revokeObjectURL(p.url); state.pending.splice(i, 1); renderThumbs(); };
+    d.append(img, x);
+    box.appendChild(d);
+  });
+}
+
+function resetForm() {
+  state.editingId = null;
+  state.pending.forEach((p) => URL.revokeObjectURL(p.url));
+  state.pending = [];
+  $('title').value = '';
+  $('detail').value = '';
+  $('formTitle').textContent = '新增一条作业';
+  $('saveBtn').textContent = '保存并同步';
+  renderThumbs();
+  renderList();
+}
+
+async function editItem(it) {
+  state.editingId = it.id;
+  state.subject = it.subject || '其他';
+  $('title').value = it.title || '';
+  $('detail').value = it.detail || '';
+  $('formTitle').textContent = '编辑这一条';
+  $('saveBtn').textContent = '更新并同步';
+  renderChips();
+
+  state.pending.forEach((p) => URL.revokeObjectURL(p.url));
+  state.pending = [];
+  for (const path of (it.images || [])) {
+    try {
+      const blob = await readBlob(path);
+      state.pending.push({ existingPath: path, url: URL.createObjectURL(blob) });
+    } catch (_) { /* 文件缺失则跳过 */ }
+  }
+  renderThumbs();
+  renderList();
+  $('title').focus();
+}
+
+/* ---------- 添加图片 ---------- */
+function addFiles(files) {
+  const imgs = [...files].filter((f) => f.type.startsWith('image/'));
+  if (!imgs.length) return;
+  imgs.forEach((f) => state.pending.push({ file: f, url: URL.createObjectURL(f) }));
+  renderThumbs();
+  if (imgs.length) toast(`加了 ${imgs.length} 张图`);
+}
+
+/* ---------- 保存 ---------- */
+async function save() {
+  if (state.writing) return;
+  if (!(await restoreDir(true))) { $('gate').hidden = false; $('app').hidden = true; return; }
+
+  const title = $('title').value.trim();
+  const detail = $('detail').value.trim();
+  if (!title && !detail && state.pending.length === 0) {
+    toast('至少写一句话或放一张图', true);
+    $('title').focus();
+    return;
+  }
+
+  state.writing = true;
+  const btn = $('saveBtn');
+  btn.disabled = true;
+  btn.textContent = '正在写入…';
+
+  try {
+    // 1. 图片：新图压缩后写入 img/<date>/
+    const imgPaths = [];
+    for (const p of state.pending) {
+      if (p.existingPath) { imgPaths.push(p.existingPath); continue; }
+      const blob = await compress(p.file);
+      const name = `${randHex(8)}.jpg`;
+      await writeFile(`img/${state.date}/${name}`, blob);
+      imgPaths.push(`img/${state.date}/${name}`);
+    }
+
+    // 2. 单日作业：先读后合并，绝不盲写
+    const day = await loadDay(state.date);
+    const id = state.editingId || `${Date.now()}-${randHex(4)}`;
+    const idx = day.items.findIndex((i) => i.id === id);
+    const maxOrder = day.items.reduce((m, i) => Math.max(m, Number(i.order) || 0), 0);
+
+    const item = {
+      id,
+      subject: state.subject,
+      title: title || state.subject,
+      detail,
+      order: idx >= 0 ? (Number(day.items[idx].order) || idx + 1) : maxOrder + 1,
+      images: imgPaths,
+    };
+
+    if (idx >= 0) day.items[idx] = item; else day.items.push(item);
+    day.items.sort((a, b) => (Number(a.order) || 0) - (Number(b.order) || 0));
+
+    day.notes = $('notes').value.trim();
+    day.updatedAt = nowISO();
+    day.schemaVersion = 1;
+    if (!day.title) day.title = '今天的作业';
+
+    await writeJSON(`day/${state.date}.json`, day);
+
+    // 3. 索引
+    await updateManifest(state.date, day.items.length, day.validUntil || '');
+
+    // 4. 回读校验：坚果云客户端可能正在同步/占用文件，写成功不等于写对了
+    const check = await loadDay(state.date);
+    if (check.items.length !== day.items.length) {
+      throw new Error(`回读校验失败：应写入 ${day.items.length} 条，实际读到 ${check.items.length} 条`);
+    }
+    if (!check.items.some((i) => i.id === id)) {
+      throw new Error('回读校验失败：刚写的这条没出现在文件里');
+    }
+
+    state.items = check.items;
+    resetForm();
+    renderList();
+    toast(idx >= 0 ? '已更新，坚果云会自动同步' : '已保存，坚果云会自动同步');
+  } catch (e) {
+    console.error(e);
+    toast('写入失败：' + e.message + '（若坚果云正在占用文件，稍等几秒重试）', true);
+  } finally {
+    state.writing = false;
+    btn.disabled = false;
+    btn.textContent = state.editingId ? '更新并同步' : '保存并同步';
+  }
+}
+
+async function removeItem(it) {
+  if (!confirm(`删除「${it.title || '这一条'}」？`)) return;
+  try {
+    const day = await loadDay(state.date);
+    day.items = day.items.filter((i) => i.id !== it.id);
+    day.updatedAt = nowISO();
+    await writeJSON(`day/${state.date}.json`, day);
+    await updateManifest(state.date, day.items.length, day.validUntil || '');
+    state.items = day.items;
+    if (state.editingId === it.id) resetForm();
+    renderList();
+    toast('已删除');
+  } catch (e) {
+    toast('删除失败：' + e.message, true);
+  }
+}
+
+/* ---------- 日期切换（电脑端是唯一允许改日期的端，方便预排未来几天） ---------- */
+function shiftDate(deltaDays) {
+  const [y, m, d] = state.date.split('-').map(Number);
+  const dt = new Date(y, m - 1, d + deltaDays);
+  const s = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+  switchDate(s);
+}
+
+async function switchDate(next) {
+  if (next === state.date) return;
+  state.date = next;
+  resetForm();                      // 编辑态跟着日期走，别把昨天的条目改到今天
+  try {
+    const day = await loadDay(next);
+    state.items = day.items || [];
+    state.validUntil = day.validUntil || '';
+    $('notes').value = day.notes || '';
+  } catch (e) {
+    toast(e.message, true);
+    state.items = [];
+    state.validUntil = '';
+    $('notes').value = '';
+  }
+  renderList();
+  renderUntil();
+  toast(`已切到 ${dateLabel(next)}`);
+}
+
+/* ---------- 启动 ---------- */
+async function boot() {
+  $('topDate').textContent = dateLabel(state.date);
+  renderChips();
+
+  const ok = await restoreDir(false);
+  if (!ok) {
+    $('gate').hidden = false;
+    $('app').hidden = true;
+    return;
+  }
+  await enterApp();
+}
+
+async function enterApp() {
+  $('gate').hidden = true;
+  $('app').hidden = false;
+
+  const c = $('conn');
+  c.className = 'conn on';
+  $('connText').textContent = state.dirHandle.name + '/';
+
+  try {
+    const day = await loadDay(state.date);
+    state.items = day.items || [];
+    state.validUntil = day.validUntil || '';
+    $('notes').value = day.notes || '';
+  } catch (e) {
+    toast(e.message, true);
+    state.items = [];
+    state.validUntil = '';
+  }
+  renderList();
+  renderUntil();
+  $('title').focus();
+}
+
+/* ---------- 事件 ---------- */
+$('pickBtn').onclick = async () => { if (await pickDir()) await enterApp(); };
+
+$('saveBtn').onclick = save;
+
+// 日期切换：预排未来几天用
+$('prevDay').onclick = () => shiftDate(-1);
+$('nextDay').onclick = () => shiftDate(1);
+$('todayBtn').onclick = () => switchDate(today());
+$('resetBtn').onclick = resetForm;
+
+$('drop').onclick = () => $('file').click();
+$('file').onchange = (e) => { addFiles(e.target.files); e.target.value = ''; };
+
+['dragenter', 'dragover'].forEach((ev) =>
+  $('drop').addEventListener(ev, (e) => { e.preventDefault(); $('drop').classList.add('over'); }));
+['dragleave', 'drop'].forEach((ev) =>
+  $('drop').addEventListener(ev, (e) => { e.preventDefault(); $('drop').classList.remove('over'); }));
+$('drop').addEventListener('drop', (e) => { if (e.dataTransfer?.files) addFiles(e.dataTransfer.files); });
+
+// ⌘V 粘贴截图
+document.addEventListener('paste', (e) => {
+  const files = [...(e.clipboardData?.files || [])];
+  if (files.length) { e.preventDefault(); addFiles(files); }
+});
+
+// 表单里按 Enter 直接保存（textarea 除外）
+['title'].forEach((id) => $(id).addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') { e.preventDefault(); save(); }
+}));
+
+document.addEventListener('keydown', (e) => {
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') { e.preventDefault(); save(); }
+});
+
+boot();
+</script>
+</body>
+</html>

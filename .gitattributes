@@ -1,0 +1,20 @@
+# 统一换行，避免 Windows 同学 clone 下来脚本跑不了、diff 里全是换行改动
+
+* text=auto eol=lf
+
+# 批处理必须 CRLF，cmd.exe 对 LF 的 goto/label 处理不可靠
+*.bat  text eol=crlf
+*.cmd  text eol=crlf
+
+# 这两个是「双击运行」的入口，必须保持 LF 且带可执行位
+*.sh      text eol=lf
+*.command text eol=lf
+gradlew   text eol=lf
+
+# 预期是二进制
+*.apk  binary
+*.jks  binary
+*.keystore binary
+*.png  binary
+*.jpg  binary
+*.zip  binary
