@@ -169,7 +169,7 @@ cd homework-board
 产物：
 
 ```
-dist/作业板-TV-0.2.16.apk          约 1.4 MB
+dist/作业板-TV-0.2.17.apk          约 1.4 MB
 dist/作业板-手机-0.2.18.apk        约 1.7 MB
 dist/网页版/                       可直接托管 / 拷给别人用的网页端
 dist/作业板-网页版.zip             同上，带了 UTF-8 文件名和可执行位

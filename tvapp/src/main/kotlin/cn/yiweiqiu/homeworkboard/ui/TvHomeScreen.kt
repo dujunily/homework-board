@@ -2,6 +2,8 @@ package cn.yiweiqiu.homeworkboard.ui
 
 import androidx.activity.compose.BackHandler
 import android.app.Activity
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -37,6 +39,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -853,6 +856,20 @@ private fun ImageViewer(images: List<String>, onClose: () -> Unit) {
     var index by remember { mutableIntStateOf(0) }
     val focus = remember { FocusRequester() }
 
+    // 底部提示只在「刚打开」和「翻到另一张」时露个脸，3 秒后自动淡出。
+    // 一直压在图上会挡住作业内容（尤其竖版作业本的照片，底部常被遮住）。
+    var hintVisible by remember { mutableStateOf(true) }
+    LaunchedEffect(index) {
+        hintVisible = true
+        delay(3_000)
+        hintVisible = false
+    }
+    val hintAlpha by animateFloatAsState(
+        targetValue = if (hintVisible) 1f else 0f,
+        animationSpec = tween(durationMillis = 500),
+        label = "viewerHintAlpha",
+    )
+
     BackHandler { onClose() }
 
     LaunchedEffect(Unit) {
@@ -908,6 +925,7 @@ private fun ImageViewer(images: List<String>, onClose: () -> Unit) {
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .padding(bottom = 20.dp)
+                .alpha(hintAlpha)
                 .clip(RoundedCornerShape(14.dp))
                 .background(Color(0xD9000000))
                 .padding(horizontal = 24.dp, vertical = 13.dp),
