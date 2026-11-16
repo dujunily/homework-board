@@ -194,6 +194,7 @@ package_web() {
   cp "$ROOT/webapp/serve.ps1" "$out/"
   cp "$ROOT/webapp/start.sh" "$out/"
   cp "$ROOT/webapp/launch.sh" "$out/"
+  cp "$ROOT/webapp/install-service.sh" "$out/"
   cp "$ROOT/webapp/启动-网页版.command" "$out/"
   cp "$ROOT/webapp/启动-网页版.bat" "$out/"
   cp "$ROOT/webapp/README.md" "$out/使用说明.md" 2>/dev/null || true
@@ -205,7 +206,7 @@ package_web() {
     cp "$ROOT/webapp/icon/作业板.icns" "$out/icon/"
   fi
 
-  chmod +x "$out/start.sh" "$out/launch.sh" "$out/make-desktop.sh" "$out/启动-网页版.command" 2>/dev/null || true
+  chmod +x "$out/start.sh" "$out/launch.sh" "$out/install-service.sh" "$out/make-desktop.sh" "$out/启动-网页版.command" 2>/dev/null || true
 
   say "  ✓ $out/"
 

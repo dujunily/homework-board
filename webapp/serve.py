@@ -278,7 +278,11 @@ def main(argv):
     print(" 首次使用填坚果云账号 + 应用专用密码（不是登录密码）")
     print(" 保存后会自动通知局域网里的电视去拉（端口 %d）" % PING_PORT)
     print("")
-    print(" 关闭这个窗口（或按 Ctrl+C）即停止服务，录入过程中别关")
+    if os.environ.get("WORKBOARD_DAEMON") == "1":
+        # 由 launchd 托管：没有窗口可关，停服务得走 install-service.sh --uninstall
+        print(" 后台常驻中（launchd 托管），开机自启，关不关终端都不影响")
+    else:
+        print(" 关闭窗口（或按 Ctrl+C）即停止服务；想长期常驻就跑 install-service.sh")
     print(line)
     sys.stdout.flush()
 
