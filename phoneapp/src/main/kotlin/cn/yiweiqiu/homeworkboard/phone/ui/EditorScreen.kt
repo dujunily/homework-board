@@ -192,7 +192,10 @@ fun EditorScreen(
                     .focusRequester(focus),
                 placeholder = { Text("写一句话，比如「生字抄写」") },
                 textStyle = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium),
-                singleLine = true,
+                // 原来 singleLine：长作业只能左右横向滚，等于看不全。
+                // 改成两行起步、最多撑到 6 行，再长就在框内滚动，不会挤掉下面的补充说明和图片区。
+                minLines = 2,
+                maxLines = 6,
                 shape = RoundedCornerShape(12.dp),
                 keyboardOptions = KeyboardOptions(
                     capitalization = KeyboardCapitalization.Sentences,
@@ -209,10 +212,12 @@ fun EditorScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .tapToFocus(detailFocus, keyboard)
-                    .focusRequester(detailFocus)
-                    .height(120.dp),
+                    .focusRequester(detailFocus),
                 placeholder = { Text("补充说明（可不填）") },
                 textStyle = MaterialTheme.typography.bodyLarge,
+                // 原来钉死 120.dp，写长了只能在小框里滚；改成 4~10 行跟随内容自适应
+                minLines = 4,
+                maxLines = 10,
                 shape = RoundedCornerShape(12.dp),
                 colors = fieldColors(),
             )
