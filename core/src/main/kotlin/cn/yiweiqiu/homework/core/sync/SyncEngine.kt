@@ -484,6 +484,86 @@ class SyncEngine(
         }
     }
 
+    /**
+     * 批量设置「这几条作业显示到哪天」（[HomeworkItem.validUntil]）。
+     *
+     * 和 [saveValidUntil] 的区别只在颗粒度：那个改整天，这个只改点名的几条，
+     * 没点名的保持原样。空串 = 回到「跟随当天」，不是「今天」——
+     * 周五设成空串的那条仍然跟到周日，和它没被设置过时一样。
+     *
+     * 一次读改写搞定全部条目，避免批量勾十条发十次请求（也就十次 412 的机会）。
+     */
+    suspend fun saveItemsValidUntil(
+        date: String,
+        itemIds: Set<String>,
+        validUntil: String,
+    ): PushResult = withContext(Dispatchers.IO) {
+        if (!config.configured) return@withContext notConfiguredPush()
+        if (itemIds.isEmpty()) {
+            return@withContext PushResult.Failed(SyncPhase.SYNCED, "先选几条作业", false)
+        }
+
+        SyncGate.mutex.withLock {
+            setStatus(SyncPhase.SYNCING, "正在设置…")
+            try {
+                DavSession.update(config.webdavUrl, config.username, config.password)
+                val dav = client
+
+                for (attempt in 1..MAX_WRITE_ATTEMPTS) {
+                    val read = dav.getText("day/$date.json")
+                    if (read.code == 404) {
+                        return@withLock PushResult.Failed(
+                            SyncPhase.SYNCED,
+                            "这一天还没有作业，先记一条再说",
+                            false,
+                        )
+                    }
+                    if (read.code != 200) {
+                        throwIfDavError(read.code)
+                        throw DavServerException(read.code)
+                    }
+                    val base = HomeworkJson.decodeFromString(HomeworkDay.serializer(), read.body.orEmpty())
+                    if (base.schemaVersion > SCHEMA_VERSION) throw DavUpgradeException(base.schemaVersion)
+
+                    val now = IsoTime.now()
+                    val norm = if (validUntil.isBlank()) "" else DayRule.normalizeValidUntil(date, validUntil)
+                    val touched = base.items.count { it.id in itemIds }
+                    if (touched == 0) {
+                        markSynced("这些作业已经不在云端了")
+                        return@withLock PushResult.Failed(
+                            SyncPhase.SYNCED,
+                            "这些作业已经不在云端了",
+                            false,
+                        )
+                    }
+                    val updated = base.copy(
+                        items = base.items.map { item ->
+                            if (item.id in itemIds) item.copy(validUntil = norm, updatedAt = now) else item
+                        },
+                        updatedAt = now,
+                        updatedBy = config.childName.ifBlank { base.updatedBy },
+                    )
+
+                    backup(dav, date, read.body)
+                    val put = putWithLock(dav, "day/$date.json", encode(updated), read.etag)
+                    if (put.ok) {
+                        val etag = put.etag ?: dav.stat("day/$date.json")?.etag.orEmpty()
+                        updateManifest(dav, date, updated, etag)
+                        markSynced("已保存")
+                        return@withLock PushResult.Ok(updated, etag)
+                    }
+                    if (put.code == 412 && attempt < MAX_WRITE_ATTEMPTS) continue
+                    throwIfDavError(put.code)
+                    throw DavServerException(put.code)
+                }
+                PushResult.Failed(SyncPhase.CONFLICT, "云端一直在被别人改，稍后再试", true)
+            } catch (e: Exception) {
+                val f = fail(e)
+                PushResult.Failed(f.phase, f.message, f.retryable)
+            }
+        }
+    }
+
     /** 设置页「测试连接」 */
     suspend fun testConnection(): String = withContext(Dispatchers.IO) {
         try {

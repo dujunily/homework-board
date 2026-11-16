@@ -76,6 +76,28 @@ object DayRule {
         if (input.isBlank()) "" else validUntilOf(date, input)
 
     /**
+     * 某一条作业实际显示到哪天。
+     *
+     * 顺序是：这一条自己设过就用它，没设（空串）就跟随整天。
+     * 两种值都会被夹在 `[布置日, 布置日 + MAX_CARRY_DAYS]` 内，填错也不会把电视钉死。
+     */
+    fun itemValidUntil(dayDate: String, dayValidUntil: String, itemValidUntil: String): String {
+        val own = itemValidUntil.trim()
+        return if (isDate(own)) validUntilOf(dayDate, own) else validUntilOf(dayDate, dayValidUntil)
+    }
+
+    /**
+     * 今天还该显示的条目：各自都还没过期的那几条，顺序照旧。
+     *
+     * 电视端用它决定画什么——一条作业过了自己的日子就该从屏幕上消失，
+     * 哪怕同一天还有别的条在。手机端不用它，那边要看全量才改得动。
+     */
+    fun visibleItems(day: HomeworkDay?, today: String): List<HomeworkItem> {
+        val d = day ?: return emptyList()
+        return d.items.filter { itemValidUntil(d.date, d.validUntil, it.validUntil) >= today }
+    }
+
+    /**
      * 今天该显示哪一天的作业。
      *
      * 今天有自己的一份就直接用它；否则在有效期内挑最近的一天。

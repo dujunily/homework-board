@@ -34,6 +34,13 @@ data class EditorState(
     /** 新挑的、还没上传的图片字节 */
     val newImages: List<ByteArray> = emptyList(),
     /**
+     * 这一条单独显示到哪天（`yyyy-MM-dd`）。
+     *
+     * 空串 = 不单独设置，跟随当天的有效期（平时就是今天）。界面上显示成「跟当天」，
+     * 不逼家长每记一条都想一遍期限——大部分人就是当天做完当天交。
+     */
+    val validUntil: String = "",
+    /**
      * 草稿落盘时间（毫秒）。0 表示这是「还没有这个字段」的老版本留下的草稿。
      * 只用于判断一条草稿值不值得再拿出来，不参与界面。
      */
@@ -301,6 +308,7 @@ class PhoneViewModel(app: Application) : AndroidViewModel(app) {
             title = item.title,
             detail = item.detail,
             keptImages = item.images,
+            validUntil = item.validUntil,
         )
         // 记下「刚进来的样子」。这条作业本来就有标题和详情，
         // 没有这行的话 hasContent 天然为真，看一眼就走也会被存成草稿。
@@ -313,6 +321,9 @@ class PhoneViewModel(app: Application) : AndroidViewModel(app) {
     fun setTitle(text: String) = _editor.update { it.copy(title = text) }
 
     fun setDetail(text: String) = _editor.update { it.copy(detail = text) }
+
+    /** 编辑页里给这一条单独设期限；空串 = 跟随当天 */
+    fun setEditorValidUntil(until: String) = _editor.update { it.copy(validUntil = until) }
 
     fun addImages(list: List<ByteArray>) {
         _editor.update { current ->
@@ -400,6 +411,7 @@ class PhoneViewModel(app: Application) : AndroidViewModel(app) {
             title = e.title.ifBlank { "作业" },
             detail = e.detail,
             images = e.keptImages,
+            validUntil = e.validUntil,
         )
 
         _state.update { it.copy(sending = true) }
@@ -531,6 +543,50 @@ class PhoneViewModel(app: Application) : AndroidViewModel(app) {
                             sending = false,
                             validUntil = r.day.validUntil,
                             toast = "电视端会显示到 ${DayKeys.label(DayRule.validUntilOf(date, r.day.validUntil))}",
+                        )
+                    }
+                    SyncPing.announce(viewModelScope)
+                    scheduler.requestSync(delayMs = 3_000)
+                }
+
+                is HomeworkWriter.SaveResult.Failed -> {
+                    _state.update { it.copy(sending = false, toast = "没存上：${r.message}") }
+                }
+            }
+        }
+    }
+
+    /**
+     * 批量把勾中的几条作业设成「显示到某天」。
+     *
+     * 空串传进来表示回到「跟随当天」。一次请求改完所有勾选项，
+     * 勾十条不会变成十次写盘、十次抢同一个 ETag。
+     */
+    fun setItemsValidUntil(ids: Set<String>, until: String) {
+        if (ids.isEmpty()) {
+            _state.update { it.copy(toast = "先勾几条作业") }
+            return
+        }
+        if (!store.isConfigured) {
+            _state.update { it.copy(toast = "先去设置里填坚果云账号") }
+            return
+        }
+        val date = currentDate()
+        viewModelScope.launch {
+            _state.update { it.copy(sending = true) }
+            when (val r = writer().saveItemsValidUntil(date, ids, until)) {
+                is HomeworkWriter.SaveResult.Ok -> {
+                    val label = DayRule.validUntilOf(date, r.day.validUntil)
+                    _state.update {
+                        it.copy(
+                            sending = false,
+                            validUntil = r.day.validUntil,
+                            items = r.day.items.sortedBy { item -> item.order },
+                            toast = if (until.isBlank()) {
+                                "已改回跟随当天（${DayKeys.label(label)}）"
+                            } else {
+                                "${ids.size} 条显示到 ${DayKeys.label(DayRule.validUntilOf(date, until))}"
+                            },
                         )
                     }
                     SyncPing.announce(viewModelScope)

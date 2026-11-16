@@ -6,6 +6,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import cn.yiweiqiu.homework.core.ConfigLoader
 import cn.yiweiqiu.homework.core.DayKeys
+import cn.yiweiqiu.homework.core.DayRule
 import cn.yiweiqiu.homework.core.HomeworkItem
 import cn.yiweiqiu.homework.core.HomeworkRepository
 import cn.yiweiqiu.homework.core.HomeworkRepository.RefreshResult
@@ -121,7 +122,7 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
         _state.update { s ->
             s.copy(
                 loading = cached?.items == null,
-                items = cached?.items?.sortedBy { it.order } ?: emptyList(),
+                items = DayRule.visibleItems(cached, today).sortedBy { it.order },
                 notes = cached?.notes.orEmpty(),
                 updatedLabel = DayKeys.timeOf(cached?.updatedAt.orEmpty()),
                 latestLabel = latestLabel(repository.cachedManifestDays()),
@@ -273,7 +274,7 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
                 loading = false,
                 dateLabel = DayKeys.label(activeDate),
                 carryNote = carryNoteOf(activeDate),
-                items = day?.items?.sortedBy { item -> item.order } ?: emptyList(),
+                items = DayRule.visibleItems(day, today).sortedBy { item -> item.order },
                 notes = day?.notes.orEmpty(),
                 updatedLabel = DayKeys.timeOf(day?.updatedAt.orEmpty())
                     .ifBlank { clockOf(result.notModified) },
@@ -317,7 +318,7 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
             it.copy(
                 dateLabel = DayKeys.label(activeDate),
                 carryNote = carryNoteOf(activeDate),
-                items = cached?.items?.sortedBy { item -> item.order } ?: emptyList(),
+                items = DayRule.visibleItems(cached, today).sortedBy { item -> item.order },
                 notes = cached?.notes.orEmpty(),
                 updatedLabel = DayKeys.timeOf(cached?.updatedAt.orEmpty()),
             )

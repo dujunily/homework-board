@@ -12,8 +12,8 @@ android {
         applicationId = "cn.yiweiqiu.homeworkboard"
         minSdk = 23
         targetSdk = 35
-        versionCode = 22
-        versionName = "0.2.18"
+        versionCode = 23
+        versionName = "0.2.19"
     }
 
     signingConfigs {

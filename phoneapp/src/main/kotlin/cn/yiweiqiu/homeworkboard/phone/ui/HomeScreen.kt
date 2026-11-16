@@ -23,7 +23,9 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.outlined.Circle
 import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DatePicker
@@ -76,10 +78,15 @@ fun HomeScreen(
     onRefresh: () -> Unit,
     onSaveNotes: (String) -> Unit,
     onSetValidUntil: (String) -> Unit,
+    onSetItemsValidUntil: (Set<String>, String) -> Unit,
 ) {
     var pendingDelete by remember { mutableStateOf<HomeworkItem?>(null) }
     var editingNotes by remember { mutableStateOf(false) }
     var editingUntil by remember { mutableStateOf(false) }
+    // 批量：进入后点条目是「勾选」而不是「编辑」，勾完统一设一次期限
+    var batchMode by remember { mutableStateOf(false) }
+    var selectedIds by remember { mutableStateOf(emptySet<String>()) }
+    var batchUntil by remember { mutableStateOf(false) }
     var notesDraft by remember { mutableStateOf("") }
     val notesFocus = remember { FocusRequester() }
     val keyboard = LocalSoftwareKeyboardController.current
@@ -99,6 +106,11 @@ fun HomeScreen(
                 state = state,
                 onOpenSettings = onOpenSettings,
                 onEditUntil = { editingUntil = true },
+                batchMode = batchMode,
+                onToggleBatch = {
+                    batchMode = !batchMode
+                    if (!batchMode) selectedIds = emptySet()
+                },
             )
 
             if (state.pending > 0) {
@@ -118,10 +130,23 @@ fun HomeScreen(
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
                         items(state.items, key = { it.id.ifBlank { it.hashCode().toString() } }) { item ->
+                            val key = item.id.ifBlank { item.hashCode().toString() }
                             ItemRow(
                                 item = item,
-                                onClick = { onEdit(item) },
-                                onLongClick = { pendingDelete = item },
+                                selectable = batchMode,
+                                selected = key in selectedIds,
+                                onClick = {
+                                    if (batchMode) {
+                                        selectedIds = if (key in selectedIds) {
+                                            selectedIds - key
+                                        } else {
+                                            selectedIds + key
+                                        }
+                                    } else {
+                                        onEdit(item)
+                                    }
+                                },
+                                onLongClick = { if (!batchMode) pendingDelete = item },
                             )
                         }
                     }
@@ -129,16 +154,27 @@ fun HomeScreen(
             }
 
             // 整天共用的备注，和网页端的 notes 同一个字段，电视端显示成「提醒」
-            NotesBar(
-                notes = state.notes,
-                onClick = {
-                    notesDraft = state.notes
-                    editingNotes = true
-                },
-            )
+            if (batchMode) {
+                BatchBar(
+                    count = selectedIds.size,
+                    onSetUntil = { if (selectedIds.isNotEmpty()) batchUntil = true },
+                    onCancel = {
+                        batchMode = false
+                        selectedIds = emptySet()
+                    },
+                )
+            } else {
+                NotesBar(
+                    notes = state.notes,
+                    onClick = {
+                        notesDraft = state.notes
+                        editingNotes = true
+                    },
+                )
+            }
         }
 
-        FloatingActionButton(
+        if (!batchMode) FloatingActionButton(
             onClick = onAdd,
             containerColor = MaterialTheme.colorScheme.primary,
             contentColor = MaterialTheme.colorScheme.onPrimary,
@@ -165,6 +201,22 @@ fun HomeScreen(
             },
             dismissButton = {
                 TextButton(onClick = { pendingDelete = null }) { Text("算了") }
+            },
+        )
+    }
+
+    if (batchUntil) {
+        UntilDialog(
+            activeDate = state.activeDate,
+            current = "",
+            allowFollow = true,
+            title = "这几条显示到哪天？",
+            onDismiss = { batchUntil = false },
+            onPick = {
+                onSetItemsValidUntil(selectedIds, it)
+                batchUntil = false
+                batchMode = false
+                selectedIds = emptySet()
             },
         )
     }
@@ -237,11 +289,19 @@ fun HomeScreen(
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun UntilDialog(
+internal fun UntilDialog(
     activeDate: String,
     current: String,
     onDismiss: () -> Unit,
     onPick: (String) -> Unit,
+    /**
+     * 是否给一行「跟随当天」。
+     *
+     * 首页那个入口改的是整天，本来就是显式值，「跟随默认规则」没有意义；
+     * 记作业页改的是单条，绝大多数条根本不该单独设期限，必须留一条回去的路。
+     */
+    allowFollow: Boolean = false,
+    title: String = "电视端显示到哪天？",
 ) {
     if (activeDate.isBlank()) return
     val sunday = DayRule.nextSunday(activeDate)
@@ -265,16 +325,56 @@ private fun UntilDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("电视端显示到哪天？") },
+        title = { Text(title) },
         text = {
             Column {
                 Text(
-                    text = "默认规则：周五、周六布置的作业会自动管到周日。" +
-                        "放假、调休没有规律，在这里手动往后延。",
+                    text = if (allowFollow) {
+                        "不单独设置就跟当天走：今天布置的只管今天，周五、周六布置的自动管到周日。"
+                    } else {
+                        "默认规则：周五、周六布置的作业会自动管到周日。" +
+                            "放假、调休没有规律，在这里手动往后延。"
+                    },
                     style = MaterialTheme.typography.bodyMedium,
                     color = phoneMuted,
                 )
                 Spacer(Modifier.height(12.dp))
+
+                if (allowFollow) {
+                    val following = current.isBlank()
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(
+                                if (following) {
+                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)
+                                } else {
+                                    Color.Transparent
+                                },
+                            )
+                            .clickable { onPick("") }
+                            .padding(horizontal = 10.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            text = "跟随当天",
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = if (following) {
+                                MaterialTheme.colorScheme.primary
+                            } else {
+                                MaterialTheme.colorScheme.onSurface
+                            },
+                            modifier = Modifier.weight(1f),
+                        )
+                        Text(
+                            text = shortDate(DayRule.validUntilOf(activeDate, "")),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = phoneMuted,
+                        )
+                    }
+                }
+
                 options.forEach { (label, date) ->
                     val picked = date == current
                     Row(
@@ -390,6 +490,34 @@ private fun utcMillisToIso(millis: Long): String =
     Instant.ofEpochMilli(millis).atZone(ZoneOffset.UTC).toLocalDate().toString()
 
 /**
+ * 批量模式的底部工具条。
+ *
+ * 放在原来「提醒」的位置：批量是一次性动作，没选完之前不需要看提醒；
+ * 换掉它比叠一层浮条更干净，也不会盖住列表最后一条。
+ */
+@Composable
+private fun BatchBar(count: Int, onSetUntil: () -> Unit, onCancel: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 14.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant)
+            .padding(start = 14.dp, end = 4.dp, top = 2.dp, bottom = 2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = if (count == 0) "点条目勾选" else "已选 $count 条",
+            style = MaterialTheme.typography.bodyMedium,
+            color = if (count == 0) phoneMuted else MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.weight(1f),
+        )
+        TextButton(onClick = onSetUntil, enabled = count > 0) { Text("设置显示到") }
+        TextButton(onClick = onCancel) { Text("取消") }
+    }
+}
+
+/**
  * 首页常驻的一条「提醒」：有内容就显示，没有就显示成一句浅色提示。
  * 放在列表下面而不是塞进记作业页，是因为它是整天的事、不属于任何一条作业。
  */
@@ -433,7 +561,13 @@ private fun NotesBar(notes: String, onClick: () -> Unit) {
 }
 
 @Composable
-private fun Header(state: PhoneState, onOpenSettings: () -> Unit, onEditUntil: () -> Unit) {
+private fun Header(
+    state: PhoneState,
+    onOpenSettings: () -> Unit,
+    onEditUntil: () -> Unit,
+    batchMode: Boolean,
+    onToggleBatch: () -> Unit,
+) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -467,6 +601,19 @@ private fun Header(state: PhoneState, onOpenSettings: () -> Unit, onEditUntil: (
                 }
             }
         }
+        // 只有真有作业时才给「批量」：空列表进去勾无可勾
+        if (state.items.isNotEmpty()) {
+            TextButton(
+                onClick = onToggleBatch,
+                contentPadding = PaddingValues(horizontal = 8.dp),
+            ) {
+                Text(
+                    text = if (batchMode) "完成" else "批量",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+            }
+        }
         IconButton(onClick = onOpenSettings) {
             Icon(
                 Icons.Filled.Settings,
@@ -479,7 +626,7 @@ private fun Header(state: PhoneState, onOpenSettings: () -> Unit, onEditUntil: (
 }
 
 /** 「11月1日 周日」→「11月1日」，小标签里省掉星期几 */
-private fun shortDate(date: String): String = DayKeys.label(date).substringBefore(' ')
+internal fun shortDate(date: String): String = DayKeys.label(date).substringBefore(' ')
 
 private fun untilText(state: PhoneState): String {
     val until = state.untilLabel
@@ -542,19 +689,42 @@ private fun PendingBanner(count: Int, onRetry: () -> Unit) {
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun ItemRow(item: HomeworkItem, onClick: () -> Unit, onLongClick: () -> Unit) {
+private fun ItemRow(
+    item: HomeworkItem,
+    selectable: Boolean = false,
+    selected: Boolean = false,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit,
+) {
     val subject = item.subject.ifBlank { "其他" }
     val dot = Color(SubjectPalette.colorOf(subject))
+    // 只有「单独设过」的才显示日期标签：全都挂一串日期，反而看不出哪条特殊
+    val ownUntil = item.validUntil.takeIf { it.isNotBlank() }
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
-            .background(MaterialTheme.colorScheme.surface)
+            .background(
+                if (selected) {
+                    MaterialTheme.colorScheme.primary.copy(alpha = 0.08f)
+                } else {
+                    MaterialTheme.colorScheme.surface
+                },
+            )
             .combinedClickable(onClick = onClick, onLongClick = onLongClick)
             .padding(horizontal = 14.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Box(Modifier.size(9.dp).background(dot, CircleShape))
+        if (selectable) {
+            Icon(
+                imageVector = if (selected) Icons.Filled.CheckCircle else Icons.Outlined.Circle,
+                contentDescription = if (selected) "已勾选" else "未勾选",
+                tint = if (selected) MaterialTheme.colorScheme.primary else phoneMuted,
+                modifier = Modifier.size(20.dp),
+            )
+        } else {
+            Box(Modifier.size(9.dp).background(dot, CircleShape))
+        }
         Spacer(Modifier.width(10.dp))
         Column(Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -572,6 +742,14 @@ private fun ItemRow(item: HomeworkItem, onClick: () -> Unit, onLongClick: () -> 
                     style = MaterialTheme.typography.labelMedium,
                     color = dot,
                 )
+                if (ownUntil != null) {
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        text = "到 ${shortDate(ownUntil)}",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = phoneMuted,
+                    )
+                }
             }
             if (item.detail.isNotBlank()) {
                 Text(

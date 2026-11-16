@@ -679,6 +679,11 @@ async function save() {
     const idx = day.items.findIndex((i) => i.id === id);
     const maxOrder = day.items.reduce((m, i) => Math.max(m, Number(i.order) || 0), 0);
 
+    // 手机上可以给单独的某一条设「显示到哪天」（item.validUntil）。
+    // 网页端不编辑这个字段，但必须原样带回去——否则在电脑上改一个字，
+    // 手机设的期限就被这条新对象冲掉了。
+    const prev = idx >= 0 ? day.items[idx] : null;
+
     const item = {
       id,
       subject: state.subject,
@@ -687,6 +692,7 @@ async function save() {
       order: idx >= 0 ? (Number(day.items[idx].order) || idx + 1) : maxOrder + 1,
       images: imgPaths,
     };
+    if (prev && prev.validUntil) item.validUntil = prev.validUntil;
 
     if (idx >= 0) day.items[idx] = item; else day.items.push(item);
     day.items.sort((a, b) => (Number(a.order) || 0) - (Number(b.order) || 0));

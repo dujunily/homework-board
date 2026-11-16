@@ -35,6 +35,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AddAPhoto
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.PhotoCamera
@@ -80,6 +81,7 @@ import android.graphics.BitmapFactory
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.font.FontWeight
 import cn.yiweiqiu.homework.core.DavSession
+import cn.yiweiqiu.homework.core.DayRule
 import cn.yiweiqiu.homework.core.SubjectPalette
 import cn.yiweiqiu.homeworkboard.phone.EditorState
 import cn.yiweiqiu.homeworkboard.phone.ImageTools
@@ -100,6 +102,8 @@ fun EditorScreen(
     onAddImages: (List<ByteArray>) -> Unit,
     onRemoveKept: (String) -> Unit,
     onRemoveNew: (Int) -> Unit,
+    onValidUntil: (String) -> Unit,
+    activeDate: String,
     onSubmit: () -> Unit,
 ) {
     val context = LocalContext.current
@@ -125,6 +129,7 @@ fun EditorScreen(
     }
 
     var shotFile by remember { mutableStateOf<File?>(null) }
+    var showUntil by remember { mutableStateOf(false) }
     val camera = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { ok ->
         val file = shotFile
         if (ok && file != null) {
@@ -222,6 +227,43 @@ fun EditorScreen(
                 colors = fieldColors(),
             )
 
+            Spacer(Modifier.height(10.dp))
+
+            // 这一条要挂到哪天：默认跟随当天，绝大多数作业不用管它。
+            // 单独设过才把日期亮出来，一眼能看出这条和别人不一样。
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(MaterialTheme.colorScheme.surface)
+                    .clickable { showUntil = true }
+                    .padding(start = 14.dp, end = 10.dp, top = 13.dp, bottom = 13.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = "电视上显示到",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = phoneMuted,
+                )
+                Spacer(Modifier.weight(1f))
+                Text(
+                    text = if (state.validUntil.isBlank()) {
+                        val day = if (activeDate.isBlank()) "" else shortDate(DayRule.validUntilOf(activeDate, ""))
+                        if (day.isBlank()) "跟随当天" else "跟随当天 · $day"
+                    } else {
+                        shortDate(state.validUntil)
+                    },
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = if (state.validUntil.isBlank()) phoneMuted else MaterialTheme.colorScheme.primary,
+                )
+                Icon(
+                    Icons.Filled.ChevronRight,
+                    contentDescription = null,
+                    tint = phoneMuted,
+                    modifier = Modifier.size(18.dp),
+                )
+            }
+
             Spacer(Modifier.height(14.dp))
 
             ImageGrid(
@@ -266,6 +308,20 @@ fun EditorScreen(
                 )
             }
         }
+    }
+
+    if (showUntil && activeDate.isNotBlank()) {
+        UntilDialog(
+            activeDate = activeDate,
+            current = state.validUntil,
+            allowFollow = true,
+            title = "这条显示到哪天？",
+            onDismiss = { showUntil = false },
+            onPick = {
+                onValidUntil(it)
+                showUntil = false
+            },
+        )
     }
 }
 

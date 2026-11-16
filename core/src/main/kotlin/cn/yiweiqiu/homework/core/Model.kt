@@ -84,6 +84,16 @@ data class HomeworkItem(
      * 老数据和网页端写的是空串，空串一律当作「比任何时间都旧」。
      */
     val updatedAt: String = "",
+    /**
+     * 这一条单独显示到哪天（含当天）。
+     *
+     * 空串 = 不单独设置，跟随当天的有效期（[HomeworkDay.validUntil]）：平时就是今天，
+     * 周五、周六布置的跟到周日。这也让老数据和网页端不写这个字段时行为完全不变。
+     *
+     * 为什么要按条算：一页作业里各条的期限本来就不一样——每天要交的口算只管今天，
+     * 「周末背古诗」要挂到周日。整天共用一个有效期只能取最长或最短，两头都不对。
+     */
+    val validUntil: String = "",
 ) {
     val subjectOrDefault: String get() = subject.ifBlank { "其他" }
 }

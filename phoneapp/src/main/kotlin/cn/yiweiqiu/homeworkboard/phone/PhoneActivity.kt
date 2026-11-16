@@ -192,6 +192,7 @@ private fun PhoneApp(viewModel: PhoneViewModel) {
                     onRefresh = { viewModel.refresh() },
                     onSaveNotes = { viewModel.saveNotes(it) },
                     onSetValidUntil = { viewModel.setValidUntil(it) },
+                    onSetItemsValidUntil = { ids, until -> viewModel.setItemsValidUntil(ids, until) },
                 )
 
                 Screen.Editor -> EditorScreen(
@@ -204,6 +205,8 @@ private fun PhoneApp(viewModel: PhoneViewModel) {
                     onAddImages = viewModel::addImages,
                     onRemoveKept = viewModel::removeKeptImage,
                     onRemoveNew = viewModel::removeNewImage,
+                    onValidUntil = viewModel::setEditorValidUntil,
+                    activeDate = state.activeDate,
                     onSubmit = { viewModel.send { screen = Screen.Home } },
                 )
 

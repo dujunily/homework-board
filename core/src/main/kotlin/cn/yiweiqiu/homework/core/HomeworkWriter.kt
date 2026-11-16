@@ -54,6 +54,17 @@ class HomeworkWriter(
             is SyncEngine.PushResult.Failed -> SaveResult.Failed(r.message, r.retryable)
         }
 
+    /** 批量设置某几条作业的显示期限；空串 = 回到「跟随当天」 */
+    suspend fun saveItemsValidUntil(
+        date: String,
+        itemIds: Set<String>,
+        validUntil: String,
+    ): SaveResult =
+        when (val r = engine().saveItemsValidUntil(date, itemIds, validUntil)) {
+            is SyncEngine.PushResult.Ok -> SaveResult.Ok(r.day, r.etag)
+            is SyncEngine.PushResult.Failed -> SaveResult.Failed(r.message, r.retryable)
+        }
+
     /** 手机首屏：走同一套缓存 + 条件请求，避免每次都下整份 json */
     suspend fun fetchDay(date: String): HomeworkDay? = engine().fetchDay(date)
 
