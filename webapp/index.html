@@ -46,12 +46,41 @@
   .row.active{border-color:var(--accent);background:#f2f8f4}
   .row .sb{width:6px;height:30px;border-radius:3px;flex:none;background:#c9c4ba}
   .row .t{flex:1;min-width:0}
-  .row .t b{display:block;font-weight:600;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .row .t .thead{display:flex;align-items:center;gap:6px;min-width:0}
+  .row .t b{display:block;font-weight:600;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
   .row .t span{display:block;font-size:12.5px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .row .imgs{font-size:12px;color:var(--muted);flex:none}
   .row .del{border:0;background:transparent;color:#c0b9ad;font-size:16px;cursor:pointer;padding:2px 4px;border-radius:6px;flex:none}
   .row .del:hover{color:var(--danger);background:#fbeeea}
   .empty{color:var(--muted);font-size:13.5px;padding:14px 0;text-align:center}
+
+  /* 批量模式：行前的勾选框 + 勾中的底色 */
+  .row .pick{width:17px;height:17px;accent-color:var(--accent);flex:none;margin:0;cursor:pointer}
+  .row.picked{border-color:var(--accent);background:#eef6f1}
+  /* 只在「单独设过期限」的条上出现，跟手机端一致：全都挂日期反而看不出哪条特殊 */
+  .row .until{font-size:11.5px;color:var(--accent);background:rgba(47,111,79,.1);
+    border-radius:6px;padding:1px 6px;flex:none;white-space:nowrap}
+
+  .linkbtn{margin-left:auto;border:0;background:transparent;color:var(--accent);font-size:13px;
+    font-weight:600;font-family:inherit;cursor:pointer;padding:2px 7px;border-radius:7px}
+  .linkbtn:hover{background:rgba(47,111,79,.08)}
+  .linkbtn:disabled{color:var(--muted);cursor:default;background:transparent}
+
+  /* 自定义日期：原生选择器，包一层做成和 chip 一样的外观 */
+  .datepick{display:flex;align-items:center;gap:8px;margin-top:9px;font-size:12.5px;color:var(--muted)}
+  .datepick input{border:1px solid var(--line);border-radius:9px;padding:6px 10px;font-family:inherit;
+    font-size:13.5px;color:var(--ink);background:#fcfbf9;outline:none}
+  .datepick input:focus{border-color:var(--accent);background:#fff}
+
+  /* 批量工具条：浮在底部，不挤占列表高度 */
+  .batchbar{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);z-index:60;
+    display:flex;align-items:center;gap:8px;flex-wrap:wrap;max-width:94vw;
+    background:#fff;border:1px solid var(--line);border-radius:14px;padding:10px 14px;
+    box-shadow:0 10px 34px rgba(0,0,0,.14)}
+  .batchbar .n{font-size:13px;color:var(--muted);margin-right:2px}
+  .batchbar .chip{padding:5px 13px;font-size:13px}
+  .batchbar .datepick{margin-top:0}
+  .batchbar .datepick input{padding:4px 8px;font-size:13px}
 
   .hint{font-size:12.5px;color:var(--muted);margin-top:6px}
   .hint.warn{color:var(--danger)}
@@ -63,6 +92,7 @@
   .chip{border:1px solid var(--line);background:#fcfbf9;border-radius:999px;padding:6px 15px;font-size:14px;cursor:pointer;font-family:inherit;color:var(--ink);transition:.12s}
   .chip:hover{border-color:#cfc9bc}
   .chip.on{background:var(--accent);border-color:var(--accent);color:#fff}
+  .chip:disabled{opacity:.45;cursor:not-allowed}
   input[type=text],input[type=password],textarea{width:100%;border:1px solid var(--line);border-radius:10px;padding:11px 13px;font-family:inherit;font-size:15px;background:#fcfbf9;color:var(--ink);outline:none;transition:.12s}
   input[type=text]:focus,input[type=password]:focus,textarea:focus{border-color:var(--accent);background:#fff;box-shadow:0 0 0 3px rgba(47,111,79,.08)}
   textarea{resize:vertical;min-height:78px;line-height:1.6}
@@ -147,12 +177,20 @@
 <main id="app" hidden>
   <!-- 左：今日列表 -->
   <section class="card">
-    <h2><span id="listTitle">今天已布置</span> <span class="count" id="itemCount"></span></h2>
+    <h2>
+      <span id="listTitle">今天已布置</span>
+      <span class="count" id="itemCount"></span>
+      <button class="linkbtn" id="batchBtn" hidden>批量</button>
+    </h2>
     <div class="list" id="list"></div>
     <label class="f" style="margin-top:4px">今日备注（整天的提醒，如「明天带跳绳」）</label>
     <input type="text" id="notes" placeholder="可不填">
-    <label class="f" style="margin-top:14px">电视端显示到哪天</label>
+    <label class="f" style="margin-top:14px">整天显示到哪天</label>
     <div class="chips" id="untilChips"></div>
+    <div class="datepick">
+      <span>或自选日期</span>
+      <input type="date" id="dayUntilDate">
+    </div>
     <div class="hint" id="untilHint"></div>
     <div class="hint" id="countHint"></div>
   </section>
@@ -170,6 +208,14 @@
     <label class="f">详细说明（可不填，可换行）</label>
     <textarea id="detail" placeholder="第 3 课生字，每字抄写 2 遍，写完自己检查一遍"></textarea>
 
+    <label class="f">电视上显示到（只对这一条生效）</label>
+    <div class="chips" id="itemUntilChips"></div>
+    <div class="datepick">
+      <span>或自选日期</span>
+      <input type="date" id="itemUntilDate">
+    </div>
+    <div class="hint" id="itemUntilHint"></div>
+
     <label class="f">图片（可直接 ⌘V 粘贴截图，或拖进来）</label>
     <div class="drop" id="drop">点击选图 · 粘贴截图 · 拖入图片</div>
     <input type="file" id="file" accept="image/*" multiple hidden>
@@ -184,6 +230,19 @@
 </main>
 
 <div id="toast"></div>
+
+<!-- 批量设期限：勾完几条后统一设一次，省得一条条点进去改 -->
+<div class="batchbar" id="batchBar" hidden>
+  <span class="n" id="batchCount">已选 0 条</span>
+  <button class="chip" data-batch="follow">改回跟随当天</button>
+  <button class="chip" data-batch="sunday">到这周日</button>
+  <button class="chip" data-batch="week">再连休 7 天</button>
+  <label class="datepick" style="margin-top:0">
+    <span>自定义</span>
+    <input type="date" id="batchDate">
+  </label>
+  <button class="chip" id="batchCancel">取消</button>
+</div>
 
 <script>
 /* ============================================================
@@ -215,6 +274,9 @@ const state = {
   subject: localStorage.getItem('hb.subject') || '语文',
   editingId: null,
   validUntil: '',   // 这一天布置的作业管到哪天（空串 = 走默认规则）
+  itemUntil: '',    // 正在编辑的「这一条」自己管到哪天（空串 = 跟随整天）
+  batch: false,     // 批量模式：点条目是勾选，不是编辑
+  picked: new Set(),
   pending: [],      // [{file?:File, existingPath?:string, url:string}]
   writing: false,
 };
@@ -255,6 +317,32 @@ function nextSunday(date) {
   const [y, m, d] = date.split('-').map(Number);
   const dow = new Date(y, m - 1, d).getDay();
   return addDays(date, (7 - dow) % 7);
+}
+
+/* 和 core 里 DayRule.MAX_CARRY_DAYS 对齐：连休最长也就一周多，
+   再往后多半是记错了日子，夹住免得一条写错的日期把电视钉死。 */
+const MAX_CARRY_DAYS = 14;
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+/** 等价于 DayRule.validUntilOf：非法值回落默认，超范围夹紧 */
+function clampUntil(date, v) {
+  const s = (v || '').trim();
+  if (!DATE_RE.test(s)) return defaultValidUntil(date);
+  const max = addDays(date, MAX_CARRY_DAYS);
+  if (s < date) return date;
+  if (s > max) return max;
+  return s;
+}
+
+/** 等价于 DayRule.itemValidUntil：这一条自己设过就用自己的，否则跟随整天 */
+function itemUntilOf(dayDate, dayUntil, own) {
+  return DATE_RE.test((own || '').trim()) ? clampUntil(dayDate, own) : clampUntil(dayDate, dayUntil);
+}
+
+/** 「2026-11-16」→「11月16日」 */
+function mdLabel(date) {
+  const [, m, d] = date.split('-').map(Number);
+  return `${m}月${d}日`;
 }
 function nowISO() {
   const d = new Date();
@@ -492,7 +580,7 @@ function untilOptions(date) {
 function renderUntil() {
   const box = $('untilChips');
   const date = state.date;
-  const current = state.validUntil || defaultValidUntil(date);
+  const current = clampUntil(date, state.validUntil);
   box.innerHTML = '';
   untilOptions(date).forEach((o) => {
     const b = document.createElement('button');
@@ -501,23 +589,71 @@ function renderUntil() {
     b.onclick = () => setValidUntil(o.date);
     box.appendChild(b);
   });
+
+  const di = $('dayUntilDate');
+  di.min = date;
+  di.max = addDays(date, MAX_CARRY_DAYS);
+  di.value = current;
+  di.onchange = () => { if (di.value) setValidUntil(di.value); };
+
   $('untilHint').textContent = state.validUntil
-    ? `已手动延到 ${dateLabel(state.validUntil)}：这之前电视端都显示这一天的作业`
-    : `默认规则：周五、周六布置的自动管到周日（本日到 ${dateLabel(defaultValidUntil(date))}）`;
+    ? `已手动延到 ${dateLabel(current)}：这之前电视端都显示这一天的作业（这一天的每条也可以各自改）`
+    : `默认规则：周五、周六布置的自动管到周日（本日到 ${dateLabel(defaultValidUntil(date))}）；最远只能延到 ${mdLabel(addDays(date, MAX_CARRY_DAYS))}`;
+}
+
+/* 「这一条」的有效期：空串 = 跟随整天，和手机端记作业页是同一套 */
+function renderItemUntil() {
+  const box = $('itemUntilChips');
+  const date = state.date;
+  const follow = clampUntil(date, state.validUntil);   // 跟随整天时会落到哪天
+  const cur = state.itemUntil;
+
+  box.innerHTML = '';
+
+  const mk = (label, value, active) => {
+    const b = document.createElement('button');
+    b.className = 'chip' + (active ? ' on' : '');
+    b.textContent = label;
+    b.onclick = () => { state.itemUntil = value; renderItemUntil(); };
+    return b;
+  };
+
+  // 跟随当天永远排第一：绝大多数作业根本不该单独设期限
+  box.appendChild(mk(`跟随当天 ${follow.slice(5).replace('-', '/')}`, '', cur === ''));
+  untilOptions(date).forEach((o) => {
+    if (o.date === date) box.appendChild(mk(`只今天 ${o.date.slice(5).replace('-', '/')}`, o.date, cur === o.date));
+    else box.appendChild(mk(`${o.label} ${o.date.slice(5).replace('-', '/')}`, o.date, cur === o.date));
+  });
+
+  const di = $('itemUntilDate');
+  di.min = date;
+  di.max = addDays(date, MAX_CARRY_DAYS);
+  di.value = DATE_RE.test(cur) ? cur : '';
+  di.onchange = () => {
+    if (!di.value) return;
+    state.itemUntil = di.value;
+    renderItemUntil();
+  };
+
+  $('itemUntilHint').textContent = cur
+    ? `这一条单独显示到 ${dateLabel(clampUntil(date, cur))}，其它条不受影响`
+    : '不单独设置就跟当天走：今天布置的只管今天，周五、周六布置的自动管到周日';
 }
 
 async function setValidUntil(v) {
   try {
+    const norm = clampUntil(state.date, v);
     const day = await loadDay(state.date);
     const dft = defaultValidUntil(state.date);
     // 与默认值相同就不写盘：空串 = 走默认规则，契约上更干净
-    day.validUntil = v === dft ? '' : v;
+    day.validUntil = norm === dft ? '' : norm;
     day.updatedAt = nowISO();
     await writeJSON(`day/${state.date}.json`, day);
     await updateManifest(state.date, (day.items || []).length, day.validUntil);
     state.validUntil = day.validUntil;
     renderUntil();
-    toast(`电视端会显示到 ${dateLabel(v)}`);
+    renderItemUntil();   // 「跟随当天」后面那个日期跟着变
+    toast(`电视端会显示到 ${dateLabel(norm)}`);
   } catch (e) {
     console.error(e);
     toast('设置失败：' + e.message + '（若坚果云正在占用文件，稍等几秒重试）', true);
@@ -545,6 +681,10 @@ function renderList() {
     hint.className = 'hint';
   }
 
+  // 批量的入口：列表里有东西才给，空列表勾无可勾
+  $('batchBtn').hidden = !items.length;
+  $('batchBtn').textContent = state.batch ? '完成' : '批量';
+
   if (!items.length) {
     const d = document.createElement('div');
     d.className = 'empty';
@@ -554,33 +694,67 @@ function renderList() {
   }
 
   items.forEach((it) => {
+    const picked = state.picked.has(it.id);
     const row = document.createElement('div');
-    row.className = 'row' + (it.id === state.editingId ? ' active' : '');
+    row.className = 'row'
+      + (it.id === state.editingId && !state.batch ? ' active' : '')
+      + (state.batch && picked ? ' picked' : '');
 
-    const sb = document.createElement('div');
-    sb.className = 'sb';
-    sb.style.background = SUBJECT_COLORS[it.subject] || SUBJECT_COLORS['其他'];
+    // 批量模式下左边换成勾选框，点整行就是勾选，不再进编辑
+    if (state.batch) {
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.className = 'pick';
+      cb.checked = picked;
+      cb.onclick = (e) => { e.stopPropagation(); togglePick(it.id); };
+      row.appendChild(cb);
+    } else {
+      const sb = document.createElement('div');
+      sb.className = 'sb';
+      sb.style.background = SUBJECT_COLORS[it.subject] || SUBJECT_COLORS['其他'];
+      row.appendChild(sb);
+    }
 
     const t = document.createElement('div');
     t.className = 't';
+    const head = document.createElement('div');
+    head.className = 'thead';
     const b = document.createElement('b');
     b.textContent = it.title || it.subject || '作业';
+    head.appendChild(b);
+
+    // 只有单独设过期限的才亮这个标签，不然每条都挂一串日期，看不出哪条特殊
+    const own = (it.validUntil || '').trim();
+    if (DATE_RE.test(own)) {
+      const ownUntil = clampUntil(state.date, own);
+      const u = document.createElement('div');
+      u.className = 'until';
+      u.textContent = '到 ' + mdLabel(ownUntil);
+      u.title = `这一条单独显示到 ${dateLabel(ownUntil)}`;
+      head.appendChild(u);
+    }
+
     const sp = document.createElement('span');
     sp.textContent = [it.subject, (it.detail || '').replace(/\n/g, ' ')].filter(Boolean).join(' · ') || '（无说明）';
-    t.append(b, sp);
+    t.append(head, sp);
 
     const imgs = document.createElement('div');
     imgs.className = 'imgs';
     if (it.images && it.images.length) imgs.textContent = '图' + it.images.length;
 
-    const del = document.createElement('button');
-    del.className = 'del';
-    del.textContent = '×';
-    del.title = '删除这一条';
-    del.onclick = (e) => { e.stopPropagation(); removeItem(it); };
+    row.append(t, imgs);
 
-    row.append(sb, t, imgs, del);
-    row.onclick = () => editItem(it);
+    if (!state.batch) {
+      const del = document.createElement('button');
+      del.className = 'del';
+      del.textContent = '×';
+      del.title = '删除这一条';
+      del.onclick = (e) => { e.stopPropagation(); removeItem(it); };
+      row.appendChild(del);
+      row.onclick = () => editItem(it);
+    } else {
+      row.onclick = () => togglePick(it.id);
+    }
     box.appendChild(row);
   });
 }
@@ -603,6 +777,7 @@ function renderThumbs() {
 
 function resetForm() {
   state.editingId = null;
+  state.itemUntil = '';
   state.pending.forEach((p) => URL.revokeObjectURL(p.url));
   state.pending = [];
   $('title').value = '';
@@ -611,16 +786,19 @@ function resetForm() {
   $('saveBtn').textContent = '保存并同步';
   renderThumbs();
   renderList();
+  renderItemUntil();
 }
 
 async function editItem(it) {
   state.editingId = it.id;
   state.subject = it.subject || '其他';
+  state.itemUntil = (it.validUntil || '').trim();
   $('title').value = it.title || '';
   $('detail').value = it.detail || '';
   $('formTitle').textContent = '编辑这一条';
   $('saveBtn').textContent = '更新并同步';
   renderChips();
+  renderItemUntil();
 
   state.pending.forEach((p) => URL.revokeObjectURL(p.url));
   state.pending = [];
@@ -680,10 +858,8 @@ async function save() {
     const maxOrder = day.items.reduce((m, i) => Math.max(m, Number(i.order) || 0), 0);
 
     // 手机上可以给单独的某一条设「显示到哪天」（item.validUntil）。
-    // 网页端不编辑这个字段，但必须原样带回去——否则在电脑上改一个字，
-    // 手机设的期限就被这条新对象冲掉了。
-    const prev = idx >= 0 ? day.items[idx] : null;
-
+    // 「跟随当天」时留空不写字段，让电视端按 DayRule 默认规则算；
+    // 单独设过就原样写进去，回读校验也能看出是不是自己写歪了。
     const item = {
       id,
       subject: state.subject,
@@ -692,7 +868,8 @@ async function save() {
       order: idx >= 0 ? (Number(day.items[idx].order) || idx + 1) : maxOrder + 1,
       images: imgPaths,
     };
-    if (prev && prev.validUntil) item.validUntil = prev.validUntil;
+    const ownUntil = (state.itemUntil || '').trim();
+    if (ownUntil) item.validUntil = clampUntil(state.date, ownUntil);
 
     if (idx >= 0) day.items[idx] = item; else day.items.push(item);
     day.items.sort((a, b) => (Number(a.order) || 0) - (Number(b.order) || 0));
@@ -720,7 +897,8 @@ async function save() {
     resetForm();
     renderList();
     pingTv();
-    toast(idx >= 0 ? '已更新，坚果云会自动同步' : '已保存，坚果云会自动同步');
+    const saved = ownUntil ? `，这一条显示到 ${mdLabel(clampUntil(state.date, ownUntil))}` : '';
+    toast((idx >= 0 ? '已更新' : '已保存') + saved + '，坚果云会自动同步');
   } catch (e) {
     console.error(e);
     toast('写入失败：' + e.message + '（若坚果云正在占用文件，稍等几秒重试）', true);
@@ -749,6 +927,98 @@ async function removeItem(it) {
   }
 }
 
+/* ---------- 批量设期限 ----------
+   勾十条改一次，一次读、一次写：不会变成十次抢同一个 ETag、互相覆盖。 */
+function toggleBatch() {
+  state.batch = !state.batch;
+  state.picked.clear();
+  // 刻意不动表单：家长可能正写到一半，切个批量不该把草稿清掉
+  renderBatchBar();
+  renderList();
+}
+
+function togglePick(id) {
+  if (state.picked.has(id)) state.picked.delete(id);
+  else state.picked.add(id);
+  renderBatchBar();
+  renderList();
+}
+
+function renderBatchBar() {
+  const bar = $('batchBar');
+  const n = state.picked.size;
+  const date = state.date;
+  bar.hidden = !state.batch;
+  $('batchCount').textContent = n ? `已选 ${n} 条` : '点条目前面的方框勾选';
+
+  // 没勾任何一条之前不让点：点了才发现什么都没选上，是种浪费
+  bar.querySelectorAll('[data-batch]').forEach((b) => { b.disabled = n === 0; });
+
+  const bd = $('batchDate');
+  bd.min = date;
+  bd.max = addDays(date, MAX_CARRY_DAYS);
+  bd.disabled = n === 0;
+  bd.value = '';
+  bd.onchange = () => { if (bd.value) applyBatch(bd.value); };
+}
+
+async function applyBatch(target) {
+  const ids = [...state.picked];
+  if (!ids.length) { toast('先勾几条作业', true); return; }
+  if (state.writing) return;
+
+  const date = state.date;
+  let until = '';
+  if (target === 'sunday') until = nextSunday(date);
+  else if (target === 'week') until = addDays(date, 7);
+  else if (target !== 'follow') until = clampUntil(date, target);
+  // 和默认规则算出的一样就当没设过，契约里不留噪声值
+  if (until && until === defaultValidUntil(date)) until = '';
+
+  state.writing = true;
+  try {
+    const day = await loadDay(date);
+    let hit = 0;
+    day.items = (day.items || []).map((it) => {
+      if (!ids.includes(it.id)) return it;
+      hit += 1;
+      const next = { ...it };
+      if (until) next.validUntil = until;
+      else delete next.validUntil;
+      return next;
+    });
+    if (!hit) throw new Error('这几条已经不在这天了，切回列表刷新一下再试');
+
+    day.updatedAt = nowISO();
+    await writeJSON(`day/${date}.json`, day);
+    await updateManifest(date, day.items.length, day.validUntil || '');
+
+    // 回读校验：写成功不等于写对了（坚果云客户端可能在旁边动文件）
+    const check = await loadDay(date);
+    const left = check.items.filter((i) => ids.includes(i.id));
+    if (left.length !== ids.length) {
+      throw new Error(`回读校验失败：应改 ${ids.length} 条，实际只剩 ${left.length} 条`);
+    }
+    const bad = left.filter((i) => ((i.validUntil || '').trim() || '') !== until);
+    if (bad.length) throw new Error(`回读校验失败：${bad.length} 条没写进去`);
+
+    state.items = check.items;
+    state.picked.clear();
+    state.batch = false;
+    renderBatchBar();
+    renderList();
+    pingTv();
+    toast(until
+      ? `${hit} 条显示到 ${mdLabel(until)}`
+      : `已改回跟随当天（${mdLabel(clampUntil(date, check.validUntil))}）`);
+  } catch (e) {
+    console.error(e);
+    toast('设置失败：' + e.message + '（若坚果云正在占用文件，稍等几秒重试）', true);
+  } finally {
+    state.writing = false;
+  }
+}
+
 /* ---------- 日期切换（电脑端是唯一允许改日期的端，方便预排未来几天） ---------- */
 function shiftDate(deltaDays) {
   const [y, m, d] = state.date.split('-').map(Number);
@@ -760,6 +1030,9 @@ function shiftDate(deltaDays) {
 async function switchDate(next) {
   if (next === state.date) return;
   state.date = next;
+  // 勾选的是上一天的条目，换天就作废，免得到新的一天里改旧数据
+  state.batch = false;
+  state.picked.clear();
   resetForm();                      // 编辑态跟着日期走，别把昨天的条目改到今天
   try {
     const day = await loadDay(next);
@@ -774,6 +1047,7 @@ async function switchDate(next) {
   }
   renderList();
   renderUntil();
+  renderBatchBar();
   toast(`已切到 ${dateLabel(next)}`);
 }
 
@@ -857,6 +1131,8 @@ async function enterApp() {
   }
   renderList();
   renderUntil();
+  renderItemUntil();
+  renderBatchBar();
   $('title').focus();
 }
 
@@ -875,6 +1151,14 @@ $('prevDay').onclick = () => shiftDate(-1);
 $('nextDay').onclick = () => shiftDate(1);
 $('todayBtn').onclick = () => switchDate(today());
 $('resetBtn').onclick = resetForm;
+
+// 批量设期限
+$('batchBtn').onclick = toggleBatch;
+$('batchCancel').onclick = toggleBatch;
+document.querySelectorAll('[data-batch]').forEach((b) => {
+  b.onclick = () => applyBatch(b.dataset.batch);
+});
+
 
 $('drop').onclick = () => $('file').click();
 $('file').onchange = (e) => { addFiles(e.target.files); e.target.value = ''; };

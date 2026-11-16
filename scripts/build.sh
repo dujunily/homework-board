@@ -193,11 +193,19 @@ package_web() {
   cp "$ROOT/webapp/serve.py" "$out/"
   cp "$ROOT/webapp/serve.ps1" "$out/"
   cp "$ROOT/webapp/start.sh" "$out/"
+  cp "$ROOT/webapp/launch.sh" "$out/"
   cp "$ROOT/webapp/启动-网页版.command" "$out/"
   cp "$ROOT/webapp/启动-网页版.bat" "$out/"
   cp "$ROOT/webapp/README.md" "$out/使用说明.md" 2>/dev/null || true
 
-  chmod +x "$out/start.sh" "$out/启动-网页版.command" 2>/dev/null || true
+  # macOS 桌面图标：脚本 + 现成的 icns（不指望别人的机器装了 Pillow）
+  cp "$ROOT/webapp/make-desktop.sh" "$out/"
+  if [ -f "$ROOT/webapp/icon/作业板.icns" ]; then
+    mkdir -p "$out/icon"
+    cp "$ROOT/webapp/icon/作业板.icns" "$out/icon/"
+  fi
+
+  chmod +x "$out/start.sh" "$out/launch.sh" "$out/make-desktop.sh" "$out/启动-网页版.command" 2>/dev/null || true
 
   say "  ✓ $out/"
 

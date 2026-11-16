@@ -39,3 +39,8 @@ Thumbs.db
 
 .workbuddy/
 *.log
+
+# 桌面图标启动时记的进程号，每台机器各一份
+webapp/.serve.pid
+# iconutil 的中间产物，icns 本身要提交
+webapp/icon/*.iconset/

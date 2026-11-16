@@ -94,6 +94,9 @@ const document = {
     }
     return n;
   },
+  querySelector: () => el(),
+  // 事件绑定区会遍历 data-batch 的快捷档按钮，假 DOM 给个空集合就够了
+  querySelectorAll: () => [],
   addEventListener() {},
   body: el(),
 };
@@ -111,7 +114,7 @@ const script = html.match(/<script>([\s\S]*)<\/script>/)[1];
 
 const factory = new Function(
   'document', 'window', 'indexedDB', 'localStorage', 'createImageBitmap', 'confirm', 'alert', 'navigator', 'fetch',
-  script + '\n; return { state, save, loadDay, updateManifest, resetForm, renderList, today, nowISO, switchDate, defaultValidUntil, nextSunday, addDays, setValidUntil, renderUntil };',
+  script + '\n; return { state, save, loadDay, updateManifest, resetForm, renderList, today, nowISO, switchDate, defaultValidUntil, nextSunday, addDays, setValidUntil, renderUntil, clampUntil, itemUntilOf, mdLabel, renderItemUntil, applyBatch, togglePick };',
 );
 
 const api = factory(
@@ -218,16 +221,77 @@ assert.total = 0;
   assert(api.defaultValidUntil('2026-11-04') === '2026-11-04', `周三默认只管当天，实际 ${api.defaultValidUntil('2026-11-04')}`);
   assert(api.nextSunday('2026-11-04') === '2026-11-08', `最近周日算对，实际 ${api.nextSunday('2026-11-04')}`);
 
-  // 手动延长：写进 day 和 manifest 两处
+  // 手动延长：写进 day 和 manifest 两处（往后 5 天，落在 14 天夹紧区间内）
   await api.switchDate(date);
-  await api.setValidUntil('2026-11-09');
-  assert(readJson(`day/${date}.json`).validUntil === '2026-11-09', '有效期写进 day');
+  const extended = api.addDays(date, 5);
+  await api.setValidUntil(extended);
+  assert(readJson(`day/${date}.json`).validUntil === extended, `有效期写进 day，实际 ${readJson(`day/${date}.json`).validUntil}`);
   const m3 = readJson('manifest.json');
-  assert(m3.days.find((d) => d.date === date).validUntil === '2026-11-09', '有效期写进 manifest（电视端靠它判断该显示哪天）');
+  assert(m3.days.find((d) => d.date === date).validUntil === extended, '有效期写进 manifest（电视端靠它判断该显示哪天）');
 
   // 选回默认值时应写空串，保持契约干净
   await api.setValidUntil(api.defaultValidUntil(date));
   assert(readJson(`day/${date}.json`).validUntil === '', '选回默认值写空串，不污染契约');
+
+  /* ---------- 单条期限（item.validUntil） ---------- */
+  // 夹紧规则必须和 core 的 DayRule.validUntilOf 一致
+  assert(api.clampUntil('2026-11-04', '2026-11-01') === '2026-11-04', '填到过去 → 夹回当天');
+  assert(api.clampUntil('2026-11-04', '2027-01-01') === '2026-11-18', `最多延 14 天，实际 ${api.clampUntil('2026-11-04', '2027-01-01')}`);
+  assert(api.clampUntil('2026-11-06', '') === '2026-11-08', '空串 → 回落默认规则（周五管到周日）');
+  assert(api.clampUntil('2026-11-04', '乱写的') === '2026-11-04', '非法日期 → 回落默认规则');
+  assert(api.itemUntilOf('2026-11-04', '2026-11-09', '') === '2026-11-09', '没单设就跟整天走');
+  assert(api.itemUntilOf('2026-11-04', '2026-11-09', '2026-11-06') === '2026-11-06', '单设优先于整天');
+
+  await api.switchDate(date);
+  api.resetForm();
+  api.state.subject = '语文';
+  E('title').value = '跨周末读的一本';
+  api.state.itemUntil = api.addDays(date, 3);
+  await api.save();
+
+  const d4 = readJson(`day/${date}.json`);
+  const own = d4.items.find((x) => x.title === '跨周末读的一本');
+  assert(!!own && own.validUntil === api.addDays(date, 3), `单条期限写进 item.validUntil，实际 ${own && own.validUntil}`);
+
+  // 改回「跟随当天」：字段必须整个消失，不能留空串垃圾
+  api.state.editingId = own.id;
+  E('title').value = '跨周末读的一本';
+  api.state.itemUntil = '';
+  await api.save();
+  const d5 = readJson(`day/${date}.json`);
+  assert(!('validUntil' in d5.items.find((x) => x.id === own.id)), '跟随当天时不写 validUntil 字段');
+  assert(d5.items.length === d4.items.length, '改期限不会多出一条');
+
+  /* ---------- 批量设期限 ---------- */
+  // 挑一个月初的周三当靶子：周中の默认规则就是「只今天」，不会和「到这周日」撞上
+  const bd = '2026-11-04';
+  await api.switchDate(bd);
+  for (const t of ['批量一', '批量二']) {
+    api.resetForm();
+    E('title').value = t;
+    await api.save();
+  }
+  const b0 = readJson(`day/${bd}.json`);
+  const ids = b0.items.slice(0, 2).map((x) => x.id);
+  assert(ids.length === 2, '批量场景先攒出 2 条');
+
+  api.state.batch = true;
+  ids.forEach((id) => api.togglePick(id));
+  assert(api.state.picked.size === 2, `勾选记住 2 条，实际 ${api.state.picked.size}`);
+
+  await api.applyBatch('sunday');
+  const b1 = readJson(`day/${bd}.json`);
+  const sun = api.nextSunday(bd);
+  assert(ids.every((id) => b1.items.find((x) => x.id === id).validUntil === sun), `批量设到周日 ${sun}`);
+  assert(api.state.batch === false, '批量设完自动退出批量模式');
+  assert(api.state.picked.size === 0, '批量设完清空勾选');
+
+  api.state.batch = true;
+  ids.forEach((id) => api.togglePick(id));
+  await api.applyBatch('follow');
+  const b2 = readJson(`day/${bd}.json`);
+  assert(ids.every((id) => !('validUntil' in b2.items.find((x) => x.id === id))), '批量改回跟随当天会删掉字段');
+  assert(b2.items.length === b1.items.length, '批量改期限不会增删条目');
 
   console.log('\n真实磁盘上的产物：');
   console.log(fs.readFileSync(path.join(ROOT, 'manifest.json'), 'utf8'));
