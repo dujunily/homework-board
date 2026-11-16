@@ -119,7 +119,7 @@ class PhoneViewModel(app: Application) : AndroidViewModel(app) {
     private val _state = MutableStateFlow(PhoneState(configured = store.isConfigured))
     val state: StateFlow<PhoneState> = _state.asStateFlow()
 
-    private val _editor = MutableStateFlow(EditorState(subject = store.lastSubject))
+    private val _editor = MutableStateFlow(EditorState())
     val editor: StateFlow<EditorState> = _editor.asStateFlow()
 
     private val _test = MutableStateFlow<TestResult?>(null)
@@ -289,7 +289,7 @@ class PhoneViewModel(app: Application) : AndroidViewModel(app) {
     /* ------------------------------ 编辑 ------------------------------ */
 
     fun startNew() {
-        _editor.value = EditorState(subject = store.lastSubject)
+        _editor.value = EditorState()
         editorBaseline = _editor.value
     }
 
@@ -307,10 +307,8 @@ class PhoneViewModel(app: Application) : AndroidViewModel(app) {
         editorBaseline = _editor.value
     }
 
-    fun setSubject(subject: String) {
-        _editor.update { it.copy(subject = subject) }
-        store.lastSubject = subject
-    }
+    /** 科目每次进编辑页都回到默认（语文），不沿用上次的选择 */
+    fun setSubject(subject: String) = _editor.update { it.copy(subject = subject) }
 
     fun setTitle(text: String) = _editor.update { it.copy(title = text) }
 
@@ -641,7 +639,7 @@ class PhoneViewModel(app: Application) : AndroidViewModel(app) {
      */
     fun discardDraft() {
         store.draft = ""
-        _editor.value = EditorState(subject = store.lastSubject)
+        _editor.value = EditorState()
         editorBaseline = _editor.value
     }
 

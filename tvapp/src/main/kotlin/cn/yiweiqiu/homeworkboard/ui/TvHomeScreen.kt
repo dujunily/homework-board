@@ -32,6 +32,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -41,11 +42,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
@@ -54,6 +58,7 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
@@ -73,6 +78,8 @@ import coil.compose.AsyncImage
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.ceil
+import kotlin.math.max
+import kotlin.math.min
 
 /**
  * 字号候选：从大往小试，能一屏放下就不缩。
@@ -854,12 +861,17 @@ private fun Thumbnail(item: HomeworkItem, wDp: Float, hDp: Float) {
 @Composable
 private fun ImageViewer(images: List<String>, onClose: () -> Unit) {
     var index by remember { mutableIntStateOf(0) }
+    // 电视没有双指缩放，改用 OK 键在一档档倍率之间循环：1x → 2x → 3x → 1x
+    var zoom by remember { mutableFloatStateOf(1f) }
+    var offset by remember { mutableStateOf(Offset.Zero) }
+    // 图片原始像素尺寸，用来算「放大后最多能拖多远」
+    var intrinsic by remember { mutableStateOf(Size.Zero) }
     val focus = remember { FocusRequester() }
 
-    // 底部提示只在「刚打开」和「翻到另一张」时露个脸，3 秒后自动淡出。
+    // 底部提示只在「刚打开」「翻到另一张」「改了倍率」时露个脸，3 秒后自动淡出。
     // 一直压在图上会挡住作业内容（尤其竖版作业本的照片，底部常被遮住）。
     var hintVisible by remember { mutableStateOf(true) }
-    LaunchedEffect(index) {
+    LaunchedEffect(index, zoom) {
         hintVisible = true
         delay(3_000)
         hintVisible = false
@@ -877,73 +889,157 @@ private fun ImageViewer(images: List<String>, onClose: () -> Unit) {
         runCatching { focus.requestFocus() }
     }
 
-    Box(
+    // 换图必须回到 1x：新图若继承上一张的缩放和偏移，第一眼就是错位的
+    LaunchedEffect(index) {
+        zoom = 1f
+        offset = Offset.Zero
+    }
+
+    val padPx = with(LocalDensity.current) { 24.dp.toPx() }
+    val panStep = with(LocalDensity.current) { 64.dp.toPx() }
+
+    BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFF05070A))
-            .focusRequester(focus)
-            .focusable()
-            .onPreviewKeyEvent { event ->
-                if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
-                when (event.key) {
-                    Key.DirectionLeft -> {
-                        index = (index - 1 + images.size) % images.size; true
-                    }
-
-                    Key.DirectionRight -> {
-                        index = (index + 1) % images.size; true
-                    }
-
-                    Key.DirectionCenter, Key.Enter, Key.Back, Key.Escape -> {
-                        onClose(); true
-                    }
-
-                    else -> false
-                }
-            },
+            .background(Color(0xFF05070A)),
     ) {
-        val url = DavSession.absoluteUrl(images[index])
-        if (url != null) {
-            AsyncImage(
-                model = url,
-                contentDescription = null,
-                contentScale = ContentScale.Fit,
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(24.dp),
-            )
-        } else {
-            Text(
-                text = "图片地址不可用（未配置账号）",
-                color = TvColors.Muted,
-                fontSize = 22.sp,
-                modifier = Modifier.align(Alignment.Center),
+        val availW = (constraints.maxWidth - padPx * 2).coerceAtLeast(1f)
+        val availH = (constraints.maxHeight - padPx * 2).coerceAtLeast(1f)
+
+        // 放大后图片会溢出可视区，这里算出四边最多能平移多少，
+        // 否则方向键能把图拖到黑边外，屏幕上只剩一片黑。
+        fun panLimit(): Pair<Float, Float> {
+            if (intrinsic.width <= 0f || intrinsic.height <= 0f) return 0f to 0f
+            val fit = min(availW / intrinsic.width, availH / intrinsic.height)
+            val extraW = intrinsic.width * fit * zoom - availW
+            val extraH = intrinsic.height * fit * zoom - availH
+            return max(0f, extraW / 2f) to max(0f, extraH / 2f)
+        }
+
+        fun pan(dx: Float, dy: Float) {
+            val (mx, my) = panLimit()
+            offset = Offset(
+                (offset.x + dx).coerceIn(-mx, mx),
+                (offset.y + dy).coerceIn(-my, my),
             )
         }
 
-        Row(
+        Box(
             modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .padding(bottom = 20.dp)
-                .alpha(hintAlpha)
-                .clip(RoundedCornerShape(14.dp))
-                .background(Color(0xD9000000))
-                .padding(horizontal = 24.dp, vertical = 13.dp),
-            verticalAlignment = Alignment.CenterVertically,
+                .fillMaxSize()
+                .focusRequester(focus)
+                .focusable()
+                .onPreviewKeyEvent { event ->
+                    if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+                    val zoomed = zoom > 1f
+                    when (event.key) {
+                        // 未放大：左右翻页；放大后：左右平移
+                        Key.DirectionLeft ->
+                            if (zoomed) {
+                                pan(-panStep, 0f); true
+                            } else {
+                                index = (index - 1 + images.size) % images.size; true
+                            }
+
+                        Key.DirectionRight ->
+                            if (zoomed) {
+                                pan(panStep, 0f); true
+                            } else {
+                                index = (index + 1) % images.size; true
+                            }
+
+                        // 放大后上下也用来平移，未放大时不做任何事（避免误触）
+                        Key.DirectionUp -> if (zoomed) {
+                            pan(0f, -panStep); true
+                        } else {
+                            false
+                        }
+
+                        Key.DirectionDown -> if (zoomed) {
+                            pan(0f, panStep); true
+                        } else {
+                            false
+                        }
+
+                        // OK 键改成一档档放大，到 3x 后回到原始大小；推出仍走返回键
+                        Key.DirectionCenter, Key.Enter -> {
+                            zoom = when {
+                                zoom >= 3f -> 1f
+                                zoom >= 2f -> 3f
+                                else -> 2f
+                            }
+                            offset = Offset.Zero
+                            true
+                        }
+
+                        Key.Back, Key.Escape -> {
+                            onClose(); true
+                        }
+
+                        else -> false
+                    }
+                },
         ) {
-            Text(
-                text = "${index + 1} / ${images.size}",
-                fontSize = 21.sp,
-                fontWeight = FontWeight.Medium,
-                color = Color.White,
-            )
-            Spacer(Modifier.width(22.dp))
-            // 写清楚「怎么退」，别让人对着全屏图片猜：返回键和 OK 都能退
-            Text(
-                text = "← → 切换     返回键 / OK 退出",
-                fontSize = 21.sp,
-                color = Color(0xFFF0F2F5),
-            )
+            val url = DavSession.absoluteUrl(images[index])
+            if (url != null) {
+                AsyncImage(
+                    model = url,
+                    contentDescription = null,
+                    contentScale = ContentScale.Fit,
+                    onSuccess = { s ->
+                        val d = s.result.drawable
+                        intrinsic = Size(
+                            d.intrinsicWidth.coerceAtLeast(0).toFloat(),
+                            d.intrinsicHeight.coerceAtLeast(0).toFloat(),
+                        )
+                    },
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(24.dp)
+                        .graphicsLayer(
+                            scaleX = zoom,
+                            scaleY = zoom,
+                            translationX = offset.x,
+                            translationY = offset.y,
+                        ),
+                )
+            } else {
+                Text(
+                    text = "图片地址不可用（未配置账号）",
+                    color = TvColors.Muted,
+                    fontSize = 22.sp,
+                    modifier = Modifier.align(Alignment.Center),
+                )
+            }
+
+            Row(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 20.dp)
+                    .alpha(hintAlpha)
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(Color(0xD9000000))
+                    .padding(horizontal = 24.dp, vertical = 13.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = "${index + 1} / ${images.size}",
+                    fontSize = 21.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = Color.White,
+                )
+                Spacer(Modifier.width(22.dp))
+                // 写清楚当前键位：放大后会多出「方向键移动」，不写的话没人知道能拖
+                Text(
+                    text = if (zoom > 1f) {
+                        "${zoom.toInt()}×　方向键 移动　OK 还原　返回键 退出"
+                    } else {
+                        "← → 切换　OK 放大　返回键 退出"
+                    },
+                    fontSize = 21.sp,
+                    color = Color(0xFFF0F2F5),
+                )
+            }
         }
     }
 }

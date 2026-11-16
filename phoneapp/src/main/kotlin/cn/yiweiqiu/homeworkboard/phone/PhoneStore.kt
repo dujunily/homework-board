@@ -32,11 +32,6 @@ class PhoneStore(context: Context) {
         get() = prefs.getString("child", "").orEmpty()
         set(v) = prefs.edit().putString("child", v.trim()).apply()
 
-    /** 记住上次用的科目，让"再记一条"只要点两下 */
-    var lastSubject: String
-        get() = prefs.getString("lastSubject", "语文") ?: "语文"
-        set(v) = prefs.edit().putString("lastSubject", v).apply()
-
     /** 草稿只保留一条，覆盖式（契约 5.2） */
     var draft: String
         get() = prefs.getString("draft", "").orEmpty()

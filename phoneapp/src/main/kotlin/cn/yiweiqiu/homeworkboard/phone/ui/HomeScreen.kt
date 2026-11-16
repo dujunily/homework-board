@@ -26,14 +26,19 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DatePicker
+import androidx.compose.material3.DatePickerDialog
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.SelectableDates
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextFieldDefaults
+import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -56,6 +61,9 @@ import cn.yiweiqiu.homework.core.HomeworkItem
 import cn.yiweiqiu.homework.core.SubjectPalette
 import cn.yiweiqiu.homeworkboard.phone.PhoneState
 import kotlinx.coroutines.delay
+import java.time.Instant
+import java.time.LocalDate
+import java.time.ZoneOffset
 
 @Composable
 fun HomeScreen(
@@ -221,9 +229,13 @@ fun HomeScreen(
 /**
  * 「这批作业管到哪天」。
  *
- * 默认规则已经覆盖了周末（周五、周六布置的自动管到周日），这个对话框只为没有规律的日子准备：
- * 国庆、春节、调休。所以只给三个够用的档，不摆日历——家长在假期里最不想做的事就是翻日历。
+ * 默认规则已经覆盖了周末（周五、周六布置的自动管到周日），这个对话框为没有规律的日子准备：
+ * 国庆、春节、调休。
+ *
+ * 上面三档是快捷方式（只今天 / 到这周日 / 再连休 7 天），点一下就走；
+ * 假期长度没有规律，光靠三档盖不住——所以最后一行给日历，能挑到任意一天。
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun UntilDialog(
     activeDate: String,
@@ -239,6 +251,17 @@ private fun UntilDialog(
         if (sunday != activeDate) add("到这周日" to sunday)
         if (week != sunday) add("再连休 7 天" to week)
     }
+    // 当前值不在快捷档里，说明是日历上自己挑的，要让它也有个「已选中」的样子
+    val customDate = current.takeIf { c -> c.isNotBlank() && options.none { it.second == c } }
+
+    var showPicker by remember { mutableStateOf(false) }
+    val minMillis = isoToUtcMillis(activeDate) ?: 0L
+    // 上限给一年：再长就不该靠「有效期」表达，八成是记错日子了
+    val maxMillis = isoToUtcMillis(DayRule.addDays(activeDate, 365)) ?: Long.MAX_VALUE
+    val minYear = runCatching { LocalDate.parse(activeDate).year }.getOrDefault(2000)
+    val maxYear = runCatching { LocalDate.parse(DayRule.addDays(activeDate, 365)).year }
+        .getOrDefault(minYear + 1)
+
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -282,13 +305,89 @@ private fun UntilDialog(
                         )
                     }
                 }
+
+                // 快捷档盖不住「放半个月」这种长度，给一个能翻日历的出口
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(
+                            if (customDate != null) {
+                                MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)
+                            } else {
+                                Color.Transparent
+                            },
+                        )
+                        .clickable { showPicker = true }
+                        .padding(horizontal = 10.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = "自定义日期…",
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = if (customDate != null) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.onSurface
+                        },
+                        modifier = Modifier.weight(1f),
+                    )
+                    Text(
+                        text = customDate?.let { shortDate(it) } ?: "翻日历",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = phoneMuted,
+                    )
+                }
             }
         },
         confirmButton = {
             TextButton(onClick = onDismiss) { Text("取消") }
         },
     )
+
+    if (showPicker) {
+        val pickerState = rememberDatePickerState(
+            initialSelectedDateMillis = isoToUtcMillis(current) ?: minMillis,
+            selectableDates = object : SelectableDates {
+                override fun isSelectableDate(utcTimeMillis: Long): Boolean =
+                    utcTimeMillis in minMillis..maxMillis
+
+                override fun isSelectableYear(year: Int): Boolean =
+                    year in minYear..maxYear
+            },
+        )
+        DatePickerDialog(
+            onDismissRequest = { showPicker = false },
+            confirmButton = {
+                TextButton(
+                    enabled = pickerState.selectedDateMillis != null,
+                    onClick = {
+                        pickerState.selectedDateMillis?.let { onPick(utcMillisToIso(it)) }
+                        showPicker = false
+                    },
+                ) { Text("确定") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showPicker = false }) { Text("取消") }
+            },
+        ) {
+            DatePicker(
+                state = pickerState,
+                // 电视端只认日期，不认时刻，留着切换按钮只会让人以为要选时间
+                showModeToggle = false,
+            )
+        }
+    }
 }
+
+/** `yyyy-MM-dd` → 日期选择器要的「当天 0 点（UTC）」毫秒数 */
+private fun isoToUtcMillis(date: String): Long? = runCatching {
+    LocalDate.parse(date).atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
+}.getOrNull()
+
+/** 日期选择器给的毫秒数 → `yyyy-MM-dd`，按 UTC 还回去，跟 [isoToUtcMillis] 对称 */
+private fun utcMillisToIso(millis: Long): String =
+    Instant.ofEpochMilli(millis).atZone(ZoneOffset.UTC).toLocalDate().toString()
 
 /**
  * 首页常驻的一条「提醒」：有内容就显示，没有就显示成一句浅色提示。
