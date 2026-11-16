@@ -40,18 +40,28 @@ on run
 		open location openUrl
 		return
 	end if
-	do shell script "cd '" & appDir & "' && sh -c './launch.sh >/tmp/作业板-网页端.log 2>&1 & echo \$! > .serve.pid'"
+	-- 用 open -a 交给「终端」去跑，不直接 do script：
+	-- 后者要申请「控制终端」的自动化权限，前者走文件关联，不弹授权框
+	do shell script "open -a Terminal " & quoted form of (appDir & "/启动-网页版.command")
 end run
 APPLESCRIPT
 
 osacompile -o "$BUILD/$NAME.app" "$BUILD/launcher.applescript"
 if [ -f "$HERE/icon/作业板.icns" ]; then
   cp "$HERE/icon/作业板.icns" "$BUILD/$NAME.app/Contents/Resources/applet.icns"
+  # macOS 12+ 会优先吃 osacompile 顺手生成的 Assets.car，里面是默认的脚本图标；
+  # 留着它，换上去的 icns 就不生效（桌面上还是一张白纸）
+  rm -f "$BUILD/$NAME.app/Contents/Resources/Assets.car"
+  # 同理，CFBundleIconName 是在 Assets.car 里找图标的开关，没有 car 就别留着
+  /usr/libexec/PlistBuddy -c "Delete :CFBundleIconName" "$BUILD/$NAME.app/Contents/Info.plist" >/dev/null 2>&1 || true
 fi
 
-# 用 ditto 覆盖而不是删了重来：桌面不是我们该乱动的目录
+# 用 ditto 覆盖而不是删了重来：桌面不是我们该乱动的目录。
+# 但 ditto 只合并不清理，桌面上旧包里那份 Assets.car 得单独点名删掉，
+# 否则换上的图标永远被它盖着。
 mkdir -p "$DESKTOP"
 ditto "$BUILD/$NAME.app" "$DESKTOP/$NAME.app"
+rm -f "$DESKTOP/$NAME.app/Contents/Resources/Assets.car"
 touch "$DESKTOP/$NAME.app"
 
 echo "已放好：$DESKTOP/$NAME.app"
